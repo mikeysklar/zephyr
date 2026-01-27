@@ -92,6 +92,27 @@ int arch_thread_name_set(struct k_thread *thread, const char *str)
 void posix_arch_thread_entry(void *pa_thread_status)
 {
 	posix_thread_status_t *ptr = pa_thread_status;
+
+#ifdef CONFIG_THREAD_STACK_INFO
+	/*
+	 * Correct the stack_info to reflect the actual pthread stack.
+	 * The POSIX arch uses native pthread stacks instead of the
+	 * Zephyr-allocated stack, so stack_info needs to be updated.
+	 */
+	void *stack_addr;
+	size_t stack_size;
+
+	if (posix_get_thread_stack(ptr->thread_idx, &stack_addr, &stack_size) == 0) {
+    	_current->stack_info.start = (uintptr_t)stack_addr;
+    	_current->stack_info.size = stack_size;
+    	_current->stack_info.delta = 0;
+    	// Set the stack sentinel if enabled so that the kernel is ok.
+	    #if defined(CONFIG_STACK_SENTINEL)
+		*((uint32_t *) _current->stack_info.start) = STACK_SENTINEL;
+		#endif /* CONFIG_STACK_SENTINEL */
+	}
+#endif
+
 	posix_irq_full_unlock();
 	z_thread_entry(ptr->entry_point, ptr->arg1, ptr->arg2, ptr->arg3);
 }
