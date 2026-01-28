@@ -72,6 +72,14 @@ config TRACING_CUSTOM
 	  extension of the sys_port_trace* APIs at the macro level. Please use cautiously!
 	  The internal TRACE APIs may change in future releases.
 
+config TRACING_PERFETTO
+	bool "Tracing via Perfetto format"
+	select TRACING_CORE
+	select NANOPB
+	help
+	  Enable tracing output in Google Perfetto protocol buffer format.
+	  The output can be visualized using https://ui.perfetto.dev
+
 endchoice
 
 
@@ -382,3 +390,4 @@ endmenu  # Tracing Configuration
 endif
 
 source "subsys/tracing/sysview/Kconfig"
+source "subsys/tracing/perfetto/Kconfig"

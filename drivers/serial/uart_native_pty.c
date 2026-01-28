@@ -17,8 +17,16 @@
 #include <nsi_tracing.h>
 #include "uart_native_pty_bottom.h"
 
+#if defined(CONFIG_TRACING) && defined(CONFIG_TRACING_PERFETTO)
+#include <perfetto_encoder.h>
+#endif
+
 #define ERROR posix_print_error_and_exit
 #define WARN posix_print_warning
+
+/* Baud rate for timing calculations (8N1 = 10 bits per character) */
+#define DEFAULT_BAUD_RATE 115200
+#define BITS_PER_CHAR 10
 
 /*
  * UART driver for native simulator based boards.
@@ -36,6 +44,7 @@
 
 struct native_pty_config {
 	bool on_stdinout; /* Requested on stdin/out from DT */
+	uint32_t baud_rate;
 };
 
 struct native_pty_status {
@@ -48,6 +57,15 @@ struct native_pty_status {
 	char *auto_attach_cmd; /* If auto_attach, which command to launch the terminal emulator */
 	bool wait_pts;         /* Hold writes to the uart/pts until a client is connected/ready */
 	bool cmd_request_stdinout; /* User requested to connect this UART to the stdin/out */
+
+	/* Timing emulation for tracing */
+	uint64_t last_tx_end_ns; /* Timestamp when last transmission ended */
+	uint32_t baud_rate;      /* Configured baud rate (default 115200) */
+#if defined(CONFIG_TRACING) && defined(CONFIG_TRACING_PERFETTO)
+	uint64_t tx_track_uuid;     /* Perfetto track UUID for TX subtrack */
+	uint64_t rx_track_uuid;     /* Perfetto track UUID for RX subtrack */
+	uint64_t last_rx_end_ns;    /* Timestamp when last RX ended (for timing) */
+#endif
 #ifdef CONFIG_UART_ASYNC_API
 	struct  {
 		const struct device *dev;
@@ -142,7 +160,8 @@ static DEVICE_API(uart, np_uart_driver_api) = {
 
 #define NATIVE_PTY_INSTANCE(inst)                                        \
 	static struct native_pty_config native_pty_##inst##_cfg = {      \
-		.on_stdinout = DT_INST_PROP(inst, on_stdinout),          \
+		.baud_rate = DT_INST_PROP_OR(inst, current_speed, DEFAULT_BAUD_RATE), \
+		.on_stdinout = DT_INST_PROP(inst, on_stdinout),           \
 	};                                                               \
 	static struct native_pty_status native_pty_status_##inst;        \
 								         \
@@ -210,7 +229,31 @@ static int np_uart_init(const struct device *dev)
 	d->async.dev = dev;
 #endif
 
+	/* Initialize timing emulation fields */
+	d->last_tx_end_ns = 0;
+	d->baud_rate = (dt_config->baud_rate > 0) ? dt_config->baud_rate : DEFAULT_BAUD_RATE;
+#if defined(CONFIG_TRACING) && defined(CONFIG_TRACING_PERFETTO)
+	d->last_rx_end_ns = 0;
+	d->tx_track_uuid = 0;
+	d->rx_track_uuid = 0;
+	(void)perfetto_get_uart_track_uuids(dev, NULL,
+					    &d->tx_track_uuid, &d->rx_track_uuid);
+#endif
+
 	return 0;
+}
+
+/*
+ * Calculate transmission duration in nanoseconds for given number of characters.
+ * Uses 10 bits per character (1 start, 8 data, 1 stop) for 8N1.
+ */
+static uint64_t calc_tx_duration_ns(uint32_t baud_rate, size_t char_count)
+{
+	if (baud_rate == 0) {
+		baud_rate = DEFAULT_BAUD_RATE;
+	}
+	/* duration = (char_count * bits_per_char * 1e9) / baud_rate */
+	return (uint64_t)char_count * BITS_PER_CHAR * 1000000000ULL / baud_rate;
 }
 
 /*
@@ -236,6 +279,27 @@ static int np_uart_poll_out_n(struct native_pty_status *d, const unsigned char *
 	}
 
 	ret = nsi_host_write(d->out_fd, buf, len);
+
+#if defined(CONFIG_TRACING) && defined(CONFIG_TRACING_PERFETTO)
+	if (d->tx_track_uuid == 0) {
+		return ret;
+	}
+
+	/* Calculate when this transmission should start (after previous transmission) */
+	uint64_t now_ns = perfetto_get_timestamp_ns();
+	uint64_t start_ns = (d->last_tx_end_ns > now_ns) ? d->last_tx_end_ns : now_ns;
+
+	/* Calculate transmission duration based on baud rate */
+	uint32_t baud = (d->baud_rate > 0) ? d->baud_rate : DEFAULT_BAUD_RATE;
+	uint64_t duration_ns = calc_tx_duration_ns(baud, len);
+
+	/* Update when this transmission ends */
+	d->last_tx_end_ns = start_ns + duration_ns;
+
+	/* Emit the trace slice on TX subtrack */
+	perfetto_emit_slice_with_duration(d->tx_track_uuid, (const char *)buf, len,
+					  start_ns, duration_ns);
+#endif
 
 	return ret;
 }
@@ -285,6 +349,26 @@ static int np_uart_read_n(struct native_pty_status *data, unsigned char *p_char,
 	}
 
 	if (rc > 0) {
+#if defined(CONFIG_TRACING) && defined(CONFIG_TRACING_PERFETTO)
+		if (data->rx_track_uuid == 0) {
+			return rc;
+		}
+
+		/* Calculate when this reception should start (after previous reception) */
+		uint64_t now_ns = perfetto_get_timestamp_ns();
+		uint64_t start_ns = (data->last_rx_end_ns > now_ns) ? data->last_rx_end_ns : now_ns;
+
+		/* Calculate reception duration based on baud rate */
+		uint32_t baud = (data->baud_rate > 0) ? data->baud_rate : DEFAULT_BAUD_RATE;
+		uint64_t duration_ns = calc_tx_duration_ns(baud, rc);
+
+		/* Update when this reception ends */
+		data->last_rx_end_ns = start_ns + duration_ns;
+
+		/* Emit the trace slice on RX subtrack */
+		perfetto_emit_slice_with_duration(data->rx_track_uuid, (const char *)p_char, rc,
+						  start_ns, duration_ns);
+#endif
 		return rc;
 	}
 
