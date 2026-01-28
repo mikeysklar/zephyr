@@ -1,0 +1,30 @@
+# Copyright (c) 2024 Adafruit Industries
+# SPDX-License-Identifier: Apache-2.0
+
+# Main TRACING_PERFETTO option is defined in parent Kconfig as part of the
+# TRACING_FORMAT_CHOICE. This file contains additional configuration options.
+
+if TRACING_PERFETTO
+
+config PERFETTO_MAX_INTERNED_STRINGS
+	int "Maximum number of interned strings"
+	default 64
+	help
+	  Maximum number of unique event names and categories that can be
+	  interned. Interning reduces trace size by replacing repeated
+	  strings with numeric IDs.
+
+config PERFETTO_PROCESS_NAME
+	string "Process name shown in Perfetto UI"
+	default "Zephyr"
+	help
+	  The process name that will appear in the Perfetto trace viewer.
+
+config PERFETTO_TRUSTED_SEQUENCE_ID
+	int "Trusted packet sequence ID"
+	default 1
+	help
+	  Sequence ID used for trace packets. Each unique producer should
+	  have a different ID. For single-core Zephyr, 1 is sufficient.
+
+endif # TRACING_PERFETTO
