@@ -1,0 +1,25 @@
+# Nanopb options file for perfetto_trace.proto
+# These settings control field sizes to reduce memory usage
+
+# String field size limits
+perfetto.protos.TrackDescriptor.name             max_size:32
+perfetto.protos.ProcessDescriptor.process_name   max_size:32
+perfetto.protos.ThreadDescriptor.thread_name     max_size:32
+perfetto.protos.CounterDescriptor.unit_name      max_size:16
+perfetto.protos.EventCategory.name               max_size:32
+perfetto.protos.EventName.name                   max_size:32
+
+# Array/repeated field limits
+perfetto.protos.TrackEvent.categories            max_count:4 max_size:32
+perfetto.protos.TrackEvent.category_iids         max_count:4
+perfetto.protos.TrackEvent.name                  max_size:256
+perfetto.protos.TrackEvent.extra_counter_track_uuids         max_count:31
+perfetto.protos.TrackEvent.extra_counter_values         max_count:31
+perfetto.protos.TrackEvent.extra_double_counter_track_uuids max_count:15
+perfetto.protos.TrackEvent.extra_double_counter_values max_count:15
+perfetto.protos.InternedData.event_names         max_count:16
+perfetto.protos.InternedData.event_categories    max_count:8
+perfetto.protos.Trace.packet                     max_count:1
+
+# Use static allocation for small messages
+*                                                type:FT_STATIC

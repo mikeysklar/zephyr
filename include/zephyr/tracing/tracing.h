@@ -20,6 +20,8 @@
 #include "tracing_sysview.h"
 #elif defined CONFIG_TRACING_CTF
 #include "tracing_ctf.h"
+#elif defined CONFIG_TRACING_PERFETTO
+#include "tracing_perfetto.h"
 #elif defined CONFIG_TRACING_TEST
 #include "tracing_test.h"
 #elif defined CONFIG_TRACING_USER
