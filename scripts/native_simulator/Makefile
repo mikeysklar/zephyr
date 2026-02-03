@@ -19,6 +19,16 @@ NSI_CONFIG_FILE?=nsi_config
 #If the file does not exist, we don't use it as a build dependency
 NSI_CONFIG_FILE:=$(wildcard ${NSI_CONFIG_FILE})
 
+ZEPHYR_BASE?=$(abspath ${NSI_PATH}/../..)
+NANOPB_PATH:=${ZEPHYR_BASE}/../modules/lib/nanopb
+NANOPB_GENERATOR:=${NANOPB_PATH}/generator/protoc-gen-nanopb
+PROTOC:=${NANOPB_PATH}/generator/protoc
+PERFETTO_PROTO:=${ZEPHYR_BASE}/subsys/tracing/perfetto/proto/perfetto_trace.proto
+PERFETTO_PROTO_DIR:=$(dir ${PERFETTO_PROTO})
+PERFETTO_PB_C:=${NSI_PATH}common/src/perfetto_trace.pb.c
+PERFETTO_PB_H:=${NSI_PATH}common/src/perfetto_trace.pb.h
+NANOPB_SRCS:=${NANOPB_PATH}/pb_common.c ${NANOPB_PATH}/pb_decode.c
+
 # Configurable/user overridible variables:
 #  Path to the native_simulator (this folder):
 NSI_PATH?=./
@@ -82,13 +92,14 @@ no_default:
 
 RUNNER_LIB:=runner.a
 
-SRCS:=$(shell ls ${NSI_PATH}common/src/*.c)
+SRCS:=$(sort $(shell ls ${NSI_PATH}common/src/*.c) ${PERFETTO_PB_C} ${NANOPB_SRCS})
 ifdef NSI_NATIVE
   SRCS+=$(shell ls ${NSI_PATH}native/src/*.c)
 endif
 
 INCLUDES:=-I${NSI_PATH}common/src/include/ \
  -I${NSI_PATH}common/src \
+ -I${NANOPB_PATH} \
  ${NSI_EXTRA_INCLUDES}
 
 ifdef NSI_NATIVE
@@ -96,7 +107,13 @@ ifdef NSI_NATIVE
 endif
 
 EXTRA_OBJS:=$(abspath $(addprefix $(NSI_BUILD_PATH)/,$(sort $(patsubst %.c,%.o,${NSI_EXTRA_SRCS:%.cpp=%.c}))))
-OBJS:=$(abspath $(addprefix $(NSI_BUILD_PATH)/,${SRCS:${NSI_PATH}%.c=%.o})) ${EXTRA_OBJS}
+REL_SRCS:=$(filter-out /%,${SRCS})
+ABS_SRCS:=$(filter /%,${SRCS})
+REL_OBJS:=$(addprefix $(NSI_BUILD_PATH)/,$(patsubst ${NSI_PATH}%.c,%.o,${REL_SRCS}))
+ABS_OBJS:=$(addprefix $(NSI_BUILD_PATH)/,$(patsubst /%.c,%.o,${ABS_SRCS}))
+OBJS:=$(abspath ${REL_OBJS} ${ABS_OBJS}) ${EXTRA_OBJS}
+
+${OBJS}: ${PERFETTO_PB_H}
 
 DEPENDFILES:=$(addsuffix .d,$(basename ${OBJS}))
 
@@ -106,6 +123,12 @@ LOCALIZED_EMBSW:=$(abspath $(addprefix $(NSI_BUILD_PATH)/,$(addsuffix .loc_cpusw
 
 ${NSI_BUILD_PATH}:
 	@if [ ! -d ${NSI_BUILD_PATH} ]; then mkdir -p ${NSI_BUILD_PATH}; fi
+
+${PERFETTO_PB_C} ${PERFETTO_PB_H}: ${PERFETTO_PROTO}
+	${PROTOC} --proto_path=${PERFETTO_PROTO_DIR} \
+		--plugin=protoc-gen-nanopb=${NANOPB_GENERATOR} \
+		--nanopb_out=${NSI_PATH}common/src \
+		--nanopb_opt=-I${PERFETTO_PROTO_DIR} ${PERFETTO_PROTO}
 
 #Extra sources build:
 ${NSI_BUILD_PATH}/%.o: /%.c ${NSI_PATH}Makefile ${NSI_CONFIG_FILE}
