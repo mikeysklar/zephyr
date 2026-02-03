@@ -150,3 +150,7 @@ if(CONFIG_GPIO_SC18IS606)
   zephyr_library_include_directories(${ZEPHYR_BASE}/drivers/mfd)
   zephyr_library_sources(gpio_sc18is606.c)
 endif()
+
+if(CONFIG_GPIO_EMUL AND CONFIG_BOARD_NATIVE_SIM AND CONFIG_TRACING_PERFETTO)
+  target_sources(native_simulator INTERFACE gpio_emul_trace.c)
+endif()
