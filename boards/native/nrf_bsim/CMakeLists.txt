@@ -52,6 +52,7 @@ target_sources(native_simulator INTERFACE
   common/runner_hooks.c
   common/posix_arch_if.c
   common/trace_hook.c
+  common/perfetto_trace_cmdline.c
 )
 
 if(CONFIG_IPC_SERVICE AND CONFIG_BOARD_NRF5340BSIM_NRF5340_CPUAPP)
