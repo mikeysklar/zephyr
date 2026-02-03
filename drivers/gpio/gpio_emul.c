@@ -18,6 +18,9 @@
 #define LOG_LEVEL CONFIG_GPIO_LOG_LEVEL
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(gpio_emul);
+#if defined(CONFIG_BOARD_NATIVE_SIM) && defined(CONFIG_TRACING_PERFETTO)
+#include "gpio_emul_trace_bottom.h"
+#endif
 
 #define GPIO_EMUL_INT_BITMASK						\
 	(GPIO_INT_DISABLE | GPIO_INT_ENABLE | GPIO_INT_LEVELS_LOGICAL |	\
@@ -64,6 +67,8 @@ struct gpio_emul_config {
 	const gpio_pin_t num_pins;
 	/** Supported interrupts */
 	const enum gpio_emul_interrupt_cap interrupt_caps;
+	/** Perfetto GPIO track name prefix */
+	const char *trace_name;
 };
 
 /**
@@ -96,6 +101,10 @@ struct gpio_emul_data {
 	gpio_port_pins_t enabled_interrupts;
 	/** Singly-linked list of callbacks associated with the controller */
 	sys_slist_t callbacks;
+#if defined(CONFIG_BOARD_NATIVE_SIM) && defined(CONFIG_TRACING_PERFETTO)
+	/** Trace data for GPIO trace replay */
+	struct gpio_emul_trace_data trace_data;
+#endif
 };
 
 /**
@@ -292,7 +301,6 @@ static void gpio_emul_pend_interrupt(const struct device *port, gpio_port_pins_t
 
 	k_spin_unlock(&drv_data->lock, key);
 }
-
 int gpio_emul_input_set_masked_int(const struct device *port,
 				   gpio_port_pins_t mask,
 				   gpio_port_value_t values)
@@ -316,8 +324,7 @@ int gpio_emul_input_set_masked_int(const struct device *port,
 
 	input_mask = get_input_pins(port);
 	if (~input_mask & mask) {
-		LOG_ERR("Not input pin input_mask=%x mask=%x", input_mask,
-			mask);
+		LOG_ERR("Not input pin input_mask=%x mask=%x", input_mask, mask);
 		return -EINVAL;
 	}
 
@@ -864,6 +871,80 @@ static int gpio_emul_init(const struct device *dev)
 	return 0;
 }
 
+#if defined(CONFIG_BOARD_NATIVE_SIM) && defined(CONFIG_TRACING_PERFETTO)
+#include <stdio.h>
+#include "irq_ctrl.h"
+#include "nsi_cpu0_interrupts.h"
+
+/* Store pending GPIO changes to be processed by the GPIO IRQ handler */
+static const struct device *gpio_trace_pending_dev;
+static gpio_port_pins_t gpio_trace_pending_mask;
+static gpio_port_value_t gpio_trace_pending_prev;
+static gpio_port_value_t gpio_trace_pending_curr;
+static volatile bool gpio_trace_pending;
+
+static void gpio_emul_trace_set_input(void *user_data, uint8_t pin, bool value)
+{
+	const struct device *dev = user_data;
+	struct gpio_emul_data *drv_data = (struct gpio_emul_data *)dev->data;
+	gpio_port_pins_t mask = BIT(pin);
+	gpio_port_value_t values = value ? mask : 0;
+	gpio_port_pins_t prev_input_values;
+	gpio_port_pins_t input_values;
+	int result;
+
+	/* Set the value directly */
+	prev_input_values = drv_data->input_vals;
+	result = gpio_emul_input_set_masked_int(dev, mask, values);
+	input_values = drv_data->input_vals;
+	if (result != 0) {
+		return;
+	}
+
+	/* Store pending change and raise IRQ to process on Zephyr side */
+	if (input_values != prev_input_values) {
+		gpio_trace_pending_dev = dev;
+		gpio_trace_pending_mask = mask;
+		gpio_trace_pending_prev = prev_input_values;
+		gpio_trace_pending_curr = input_values;
+		gpio_trace_pending = true;
+		hw_irq_ctrl_set_irq(GPIO_TRACE_IRQ);
+	}
+}
+
+static void gpio_trace_isr(const void *arg)
+{
+	ARG_UNUSED(arg);
+
+	while (gpio_trace_pending) {
+		const struct device *dev = gpio_trace_pending_dev;
+		gpio_port_pins_t mask = gpio_trace_pending_mask;
+		gpio_port_value_t prev = gpio_trace_pending_prev;
+		gpio_port_value_t curr = gpio_trace_pending_curr;
+		gpio_trace_pending = false;
+
+		if (dev) {
+			gpio_emul_pend_interrupt(dev, mask, prev, curr);
+		}
+	}
+}
+
+static int gpio_emul_trace_init(const struct device *dev)
+{
+	struct gpio_emul_data *drv_data =
+		(struct gpio_emul_data *)dev->data;
+
+	/* Connect and enable the GPIO trace IRQ */
+	IRQ_CONNECT(GPIO_TRACE_IRQ, 0, gpio_trace_isr, NULL, 0);
+	irq_enable(GPIO_TRACE_IRQ);
+
+	drv_data->trace_data.set_input = gpio_emul_trace_set_input;
+	drv_data->trace_data.user_data = (void *)dev;
+	gpio_emul_trace_init_bottom(&drv_data->trace_data);
+	return 0;
+}
+#endif
+
 #ifdef CONFIG_PM_DEVICE
 static int gpio_emul_pm_device_pm_action(const struct device *dev,
 					 enum pm_device_action action)
@@ -898,7 +979,8 @@ static int gpio_emul_pm_device_pm_action(const struct device *dev,
 	static const struct gpio_emul_config gpio_emul_config_##_num = {\
 		.common = GPIO_COMMON_CONFIG_FROM_DT_INST(_num),	\
 		.num_pins = DT_INST_PROP(_num, ngpios),			\
-		.interrupt_caps = GPIO_EMUL_INT_CAPS(_num)		\
+		.interrupt_caps = GPIO_EMUL_INT_CAPS(_num),		\
+		.trace_name = DT_NODE_FULL_NAME(DT_DRV_INST(_num))	\
 	};								\
 	BUILD_ASSERT(							\
 		DT_INST_PROP(_num, ngpios) <= GPIO_MAX_PINS_PER_PORT,	\
@@ -918,3 +1000,17 @@ static int gpio_emul_pm_device_pm_action(const struct device *dev,
 			    &gpio_emul_driver);
 
 DT_INST_FOREACH_STATUS_OKAY(DEFINE_GPIO_EMUL)
+
+#if defined(CONFIG_BOARD_NATIVE_SIM) && defined(CONFIG_TRACING_PERFETTO)
+/* Initialize trace replay for gpio0 (the first GPIO emulator instance) */
+static int gpio_emul_trace_sys_init(void)
+{
+	const struct device *dev = DEVICE_DT_GET(DT_NODELABEL(gpio0));
+	if (device_is_ready(dev)) {
+		return gpio_emul_trace_init(dev);
+	}
+	return -ENODEV;
+}
+
+SYS_INIT(gpio_emul_trace_sys_init, APPLICATION, 99);
+#endif
