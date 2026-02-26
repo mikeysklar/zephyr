@@ -5,6 +5,9 @@ zephyr_library()
 if(CONFIG_SDL_DISPLAY)
   zephyr_library_sources(display_sdl.c)
   target_sources(native_simulator INTERFACE display_sdl_bottom.c)
+  if(CONFIG_TRACING_PERFETTO)
+    target_sources(native_simulator INTERFACE display_sdl_capture_trace.c)
+  endif()
 endif()
 
 # zephyr-keep-sorted-start
