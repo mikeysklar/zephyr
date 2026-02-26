@@ -25,6 +25,8 @@ struct sdl_display_init_params {
 	uint16_t width;
 	uint16_t zoom_pct;
 	bool use_accelerator;
+	bool headless;
+	const char *capture_png_path;
 	void **window;
 	const void *window_user_data;
 	const char *title;

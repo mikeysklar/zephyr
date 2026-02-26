@@ -20,6 +20,8 @@ bool nsi_perfetto_trace_get_counter_double(const char *track_name, uint64_t time
 					   double *value);
 bool nsi_perfetto_trace_get_next_counter_time(const char *track_name, uint64_t timestamp_ns,
 					   uint64_t *next_timestamp_ns);
+bool nsi_perfetto_trace_get_next_instant_time(const char *track_name, uint64_t timestamp_ns,
+					      uint64_t *next_timestamp_ns);
 
 #ifdef __cplusplus
 }
