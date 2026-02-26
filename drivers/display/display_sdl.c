@@ -23,6 +23,10 @@
 LOG_MODULE_REGISTER(display_sdl);
 
 static uint32_t sdl_display_zoom_pct;
+static bool sdl_display_headless;
+static const char *sdl_display_capture_png;
+static uint32_t sdl_display_pixel_format;
+static const char *sdl_display_mono_vtiled_str;
 
 enum sdl_display_op {
 	SDL_WRITE,
@@ -59,6 +63,8 @@ struct sdl_display_data {
 	void *round_disp_mask;
 	bool display_on;
 	enum display_pixel_format current_pixel_format;
+	uint32_t supported_pixel_formats;
+	uint32_t screen_info;
 	uint8_t *buf;
 	uint8_t *read_buf;
 	double angle;
@@ -70,9 +76,9 @@ struct sdl_display_data {
 	struct k_mutex task_mutex;
 };
 
-static inline uint32_t mono_pixel_order(uint32_t order)
+static inline uint32_t mono_pixel_order(uint32_t order, uint32_t screen_info)
 {
-	if (IS_ENABLED(CONFIG_SDL_DISPLAY_MONO_MSB_FIRST)) {
+	if (screen_info & SCREEN_INFO_MONO_MSB_FIRST) {
 		return BIT(7 - order);
 	} else {
 		return BIT(order);
@@ -143,6 +149,8 @@ static void sdl_task_thread(void *p1, void *p2, void *p3)
 		.width = config->width,
 		.zoom_pct = sdl_display_zoom_pct,
 		.use_accelerator = use_accelerator,
+		.headless = sdl_display_headless,
+		.capture_png_path = sdl_display_capture_png,
 		.window = &disp_data->window,
 		.window_user_data = dev,
 		.title = config->title,
@@ -184,25 +192,54 @@ static int sdl_display_init(const struct device *dev)
 
 	LOG_DBG("Initializing display driver");
 
-	disp_data->current_pixel_format =
+	if (sdl_display_pixel_format != 0) {
+		disp_data->supported_pixel_formats = sdl_display_pixel_format;
+		disp_data->current_pixel_format = sdl_display_pixel_format & -sdl_display_pixel_format;
+	} else {
+		disp_data->supported_pixel_formats = PIXEL_FORMAT_ARGB_8888 |
+			PIXEL_FORMAT_RGB_888 |
+			PIXEL_FORMAT_MONO01 |
+			PIXEL_FORMAT_MONO10 |
+			PIXEL_FORMAT_RGB_565 |
+			PIXEL_FORMAT_RGB_565X |
+			PIXEL_FORMAT_L_8 |
+			PIXEL_FORMAT_AL_88;
+		disp_data->current_pixel_format =
 #if defined(CONFIG_SDL_DISPLAY_DEFAULT_PIXEL_FORMAT_RGB_888)
-		PIXEL_FORMAT_RGB_888
+			PIXEL_FORMAT_RGB_888
 #elif defined(CONFIG_SDL_DISPLAY_DEFAULT_PIXEL_FORMAT_MONO01)
-		PIXEL_FORMAT_MONO01
+			PIXEL_FORMAT_MONO01
 #elif defined(CONFIG_SDL_DISPLAY_DEFAULT_PIXEL_FORMAT_MONO10)
-		PIXEL_FORMAT_MONO10
+			PIXEL_FORMAT_MONO10
 #elif defined(CONFIG_SDL_DISPLAY_DEFAULT_PIXEL_FORMAT_RGB_565)
-		PIXEL_FORMAT_RGB_565
+			PIXEL_FORMAT_RGB_565
 #elif defined(CONFIG_SDL_DISPLAY_DEFAULT_PIXEL_FORMAT_RGB_565X)
-		PIXEL_FORMAT_RGB_565X
+			PIXEL_FORMAT_RGB_565X
 #elif defined(CONFIG_SDL_DISPLAY_DEFAULT_PIXEL_FORMAT_L_8)
-		PIXEL_FORMAT_L_8
+			PIXEL_FORMAT_L_8
 #elif defined(CONFIG_SDL_DISPLAY_DEFAULT_PIXEL_FORMAT_AL_88)
-		PIXEL_FORMAT_AL_88
-#else  /* SDL_DISPLAY_DEFAULT_PIXEL_FORMAT */
-		PIXEL_FORMAT_ARGB_8888
-#endif /* SDL_DISPLAY_DEFAULT_PIXEL_FORMAT */
-		;
+			PIXEL_FORMAT_AL_88
+#else
+			PIXEL_FORMAT_ARGB_8888
+#endif
+			;
+	}
+
+	disp_data->screen_info =
+		(IS_ENABLED(CONFIG_SDL_DISPLAY_MONO_VTILED) ? SCREEN_INFO_MONO_VTILED : 0) |
+		(IS_ENABLED(CONFIG_SDL_DISPLAY_MONO_MSB_FIRST) ? SCREEN_INFO_MONO_MSB_FIRST : 0);
+	if (sdl_display_mono_vtiled_str != NULL) {
+		if (strcmp(sdl_display_mono_vtiled_str, "true") == 0) {
+			disp_data->screen_info |= SCREEN_INFO_MONO_VTILED;
+		} else if (strcmp(sdl_display_mono_vtiled_str, "false") == 0) {
+			disp_data->screen_info &= ~SCREEN_INFO_MONO_VTILED;
+		} else {
+			nsi_print_error_and_exit(
+				"Invalid display_mono_vtiled value '%s'. "
+				"Valid values: true, false\n",
+				sdl_display_mono_vtiled_str);
+		}
+	}
 
 	k_sem_init(&disp_data->task_sem, 0, 1);
 	k_mutex_init(&disp_data->task_mutex);
@@ -377,7 +414,8 @@ static void sdl_display_write_rgb565x(uint8_t *disp_buf,
  * SDL_PIXELFORMAT_BGRA32	Bbbbbbbb Gggggggg Rrrrrrrr Ffffffff
  */
 static void sdl_display_write_mono(uint8_t *disp_buf, const struct display_buffer_descriptor *desc,
-				   const void *buf, const bool one_is_black)
+				   const void *buf, const bool one_is_black,
+				   uint32_t screen_info)
 {
 	const uint32_t pixel_on = one_is_black ? 0U : 0x00FFFFFF;
 	uint32_t w_idx;
@@ -391,12 +429,12 @@ static void sdl_display_write_mono(uint8_t *disp_buf, const struct display_buffe
 		for (w_idx = 0U; w_idx < desc->width; ++w_idx) {
 			byte_ptr = buf;
 
-			if (IS_ENABLED(CONFIG_SDL_DISPLAY_MONO_VTILED)) {
+			if (screen_info & SCREEN_INFO_MONO_VTILED) {
 				byte_ptr += ((h_idx / 8U) * DIV_ROUND_UP(desc->pitch, 1U)) + w_idx;
-				pixel = !!(*byte_ptr & mono_pixel_order(h_idx % 8U));
+				pixel = !!(*byte_ptr & mono_pixel_order(h_idx % 8U, screen_info));
 			} else {
 				byte_ptr += (h_idx * DIV_ROUND_UP(desc->pitch, 8U)) + (w_idx / 8U);
-				pixel = !!(*byte_ptr & mono_pixel_order(w_idx % 8U));
+				pixel = !!(*byte_ptr & mono_pixel_order(w_idx % 8U, screen_info));
 			}
 
 			*((uint32_t *)disp_buf) =
@@ -478,9 +516,9 @@ static int sdl_display_write(const struct device *dev, const uint16_t x,
 	} else if (disp_data->current_pixel_format == PIXEL_FORMAT_RGB_888) {
 		sdl_display_write_rgb888(disp_data->buf, desc, buf);
 	} else if (disp_data->current_pixel_format == PIXEL_FORMAT_MONO10) {
-		sdl_display_write_mono(disp_data->buf, desc, buf, true);
+		sdl_display_write_mono(disp_data->buf, desc, buf, true, disp_data->screen_info);
 	} else if (disp_data->current_pixel_format == PIXEL_FORMAT_MONO01) {
-		sdl_display_write_mono(disp_data->buf, desc, buf, false);
+		sdl_display_write_mono(disp_data->buf, desc, buf, false, disp_data->screen_info);
 	} else if (disp_data->current_pixel_format == PIXEL_FORMAT_RGB_565) {
 		sdl_display_write_rgb565(disp_data->buf, desc, buf);
 	} else if (disp_data->current_pixel_format == PIXEL_FORMAT_RGB_565X) {
@@ -632,7 +670,7 @@ static void sdl_display_read_rgb565x(const uint8_t *read_buf,
  */
 static void sdl_display_read_mono(const uint8_t *read_buf,
 				  const struct display_buffer_descriptor *desc, void *buf,
-				  const bool one_is_black)
+				  const bool one_is_black, uint32_t screen_info)
 {
 	const uint32_t pixel_on = one_is_black ? 0xFF000000 : 0xFFFFFFFF;
 	uint32_t w_idx;
@@ -649,12 +687,12 @@ static void sdl_display_read_mono(const uint8_t *read_buf,
 			pix_ptr = sys_cpu_to_le32(pix_ptr);
 			buf8 = buf;
 
-			if (IS_ENABLED(CONFIG_SDL_DISPLAY_MONO_VTILED)) {
+			if (screen_info & SCREEN_INFO_MONO_VTILED) {
 				buf8 += (h_idx / 8U) * DIV_ROUND_UP(desc->pitch, 1U) + (w_idx);
-				bits = mono_pixel_order(h_idx % 8U);
+				bits = mono_pixel_order(h_idx % 8U, screen_info);
 			} else {
 				buf8 += (h_idx)*DIV_ROUND_UP(desc->pitch, 8U) + (w_idx / 8U);
-				bits = mono_pixel_order(w_idx % 8U);
+				bits = mono_pixel_order(w_idx % 8U, screen_info);
 			}
 
 			if (*pix_ptr == pixel_on) {
@@ -761,9 +799,9 @@ static int sdl_display_read(const struct device *dev, const uint16_t x, const ui
 	} else if (disp_data->current_pixel_format == PIXEL_FORMAT_RGB_888) {
 		sdl_display_read_rgb888(disp_data->read_buf, desc, buf);
 	} else if (disp_data->current_pixel_format == PIXEL_FORMAT_MONO10) {
-		sdl_display_read_mono(disp_data->read_buf, desc, buf, true);
+		sdl_display_read_mono(disp_data->read_buf, desc, buf, true, disp_data->screen_info);
 	} else if (disp_data->current_pixel_format == PIXEL_FORMAT_MONO01) {
-		sdl_display_read_mono(disp_data->read_buf, desc, buf, false);
+		sdl_display_read_mono(disp_data->read_buf, desc, buf, false, disp_data->screen_info);
 	} else if (disp_data->current_pixel_format == PIXEL_FORMAT_RGB_565) {
 		sdl_display_read_rgb565(disp_data->read_buf, desc, buf);
 	} else if (disp_data->current_pixel_format == PIXEL_FORMAT_RGB_565X) {
@@ -877,18 +915,9 @@ static void sdl_display_get_capabilities(
 	memset(capabilities, 0, sizeof(struct display_capabilities));
 	capabilities->x_resolution = config->width;
 	capabilities->y_resolution = config->height;
-	capabilities->supported_pixel_formats = PIXEL_FORMAT_ARGB_8888 |
-		PIXEL_FORMAT_RGB_888 |
-		PIXEL_FORMAT_MONO01 |
-		PIXEL_FORMAT_MONO10 |
-		PIXEL_FORMAT_RGB_565 |
-		PIXEL_FORMAT_RGB_565X |
-		PIXEL_FORMAT_L_8 |
-		PIXEL_FORMAT_AL_88;
+	capabilities->supported_pixel_formats = disp_data->supported_pixel_formats;
 	capabilities->current_pixel_format = disp_data->current_pixel_format;
-	capabilities->screen_info =
-		(IS_ENABLED(CONFIG_SDL_DISPLAY_MONO_VTILED) ? SCREEN_INFO_MONO_VTILED : 0) |
-		(IS_ENABLED(CONFIG_SDL_DISPLAY_MONO_MSB_FIRST) ? SCREEN_INFO_MONO_MSB_FIRST : 0);
+	capabilities->screen_info = disp_data->screen_info;
 }
 
 static int sdl_display_set_pixel_format(const struct device *dev,
@@ -1000,6 +1029,34 @@ static void display_sdl_options(void)
 		  .descript = "Display zoom percentage (100 == 1:1 scale), "
 			      "by default " STRINGIFY(CONFIG_SDL_DISPLAY_ZOOM_PCT)
 			      " = CONFIG_SDL_DISPLAY_ZOOM_PCT"
+		},
+		{ .is_switch = true,
+		  .option = "display_headless",
+		  .type = 'b',
+		  .dest = (void *)&sdl_display_headless,
+		  .descript = "Create the SDL display window hidden/headless"
+		},
+		{ .option = "display_capture_png",
+		  .name = "path",
+		  .type = 's',
+		  .dest = (void *)&sdl_display_capture_png,
+		  .descript = "Write PNG screenshots to <path>. When --input-trace provides a "
+			      "\"display_capture\" track, captures are triggered at those "
+			      "instant event times and <path> may contain %d for a sequence number"
+		},
+		{ .option = "display_pixel_format",
+		  .name = "bitmask",
+		  .type = 'u',
+		  .dest = (void *)&sdl_display_pixel_format,
+		  .descript = "Override supported pixel formats bitmask "
+			      "(e.g. 0x10 for MONO01)"
+		},
+		{ .option = "display_mono_vtiled",
+		  .name = "bool",
+		  .type = 's',
+		  .dest = (void *)&sdl_display_mono_vtiled_str,
+		  .descript = "Override the mono vtiled screen_info flag. "
+			      "One of: true, false"
 		},
 		ARG_TABLE_ENDMARKER
 	};

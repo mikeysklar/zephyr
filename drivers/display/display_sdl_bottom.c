@@ -10,8 +10,13 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <string.h>
 #include <SDL.h>
 #include "nsi_tracing.h"
+
+/* Implemented in display_sdl_capture_trace.c */
+void sdl_display_capture_trace_init(const char *png_path);
+void sdl_display_capture_trace_update(void *renderer);
 
 static int sdl_create_rounded_display_mask(uint16_t width, uint16_t height, uint32_t mask_color,
 					   void **round_disp_mask, void *renderer)
@@ -68,11 +73,13 @@ static int sdl_create_rounded_display_mask(uint16_t width, uint16_t height, uint
 
 int sdl_display_init_bottom(struct sdl_display_init_params *params)
 {
+	uint32_t window_flags = params->headless ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN;
+
 	/* clang-format off */
 	*params->window = SDL_CreateWindow(params->title, SDL_WINDOWPOS_UNDEFINED,
 				   SDL_WINDOWPOS_UNDEFINED,
 				   params->width * params->zoom_pct / 100,
-				   params->height * params->zoom_pct / 100, SDL_WINDOW_SHOWN);
+				   params->height * params->zoom_pct / 100, window_flags);
 	/* clang-format on */
 	if (*params->window == NULL) {
 		nsi_print_warning("Failed to create SDL window %s: %s", params->title,
@@ -170,6 +177,8 @@ int sdl_display_init_bottom(struct sdl_display_init_params *params)
 		params->angle, NULL, SDL_FLIP_NONE);
 	SDL_RenderPresent(*params->renderer);
 
+	sdl_display_capture_trace_init(params->capture_png_path);
+
 	return 0;
 }
 
@@ -211,6 +220,7 @@ void sdl_display_write_bottom(const struct sdl_display_write_params *params)
 			SDL_SetRenderDrawBlendMode(params->renderer, SDL_BLENDMODE_BLEND);
 		}
 
+		sdl_display_capture_trace_update(params->renderer);
 		SDL_RenderPresent(params->renderer);
 	}
 
@@ -269,6 +279,7 @@ void sdl_display_blanking_off_bottom(const struct sdl_display_blanking_off_param
 		SDL_SetRenderDrawBlendMode(params->renderer, SDL_BLENDMODE_BLEND);
 	}
 
+	sdl_display_capture_trace_update(params->renderer);
 	SDL_RenderPresent(params->renderer);
 }
 
