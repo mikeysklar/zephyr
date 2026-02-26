@@ -20,6 +20,10 @@ struct nsi_perfetto_event_double {
 	double value;
 };
 
+struct nsi_perfetto_event_instant {
+	uint64_t ts_ns;
+};
+
 struct nsi_perfetto_track {
 	uint64_t uuid;
 	char name[64];
@@ -29,6 +33,9 @@ struct nsi_perfetto_track {
 	struct nsi_perfetto_event_double *double_events;
 	size_t double_count;
 	size_t double_capacity;
+	struct nsi_perfetto_event_instant *instant_events;
+	size_t instant_count;
+	size_t instant_capacity;
 };
 
 static struct nsi_perfetto_track *tracks;
@@ -129,6 +136,25 @@ static bool track_add_double_event(struct nsi_perfetto_track *track, uint64_t ts
 	return true;
 }
 
+static bool track_add_instant_event(struct nsi_perfetto_track *track, uint64_t ts_ns)
+{
+	if (track->instant_count == track->instant_capacity) {
+		size_t new_capacity = track->instant_capacity ? track->instant_capacity * 2 : 16;
+		void *new_events = realloc(track->instant_events,
+					   new_capacity * sizeof(*track->instant_events));
+		if (!new_events) {
+			return false;
+		}
+		track->instant_events = new_events;
+		track->instant_capacity = new_capacity;
+	}
+	track->instant_events[track->instant_count++] = (struct nsi_perfetto_event_instant){ts_ns};
+	if (ts_ns < trace_min_timestamp) {
+		trace_min_timestamp = ts_ns;
+	}
+	return true;
+}
+
 static int cmp_int_event(const void *a, const void *b)
 {
 	const struct nsi_perfetto_event_int *ea = a;
@@ -157,6 +183,20 @@ static int cmp_double_event(const void *a, const void *b)
 	return 0;
 }
 
+static int cmp_instant_event(const void *a, const void *b)
+{
+	const struct nsi_perfetto_event_instant *ea = a;
+	const struct nsi_perfetto_event_instant *eb = b;
+
+	if (ea->ts_ns < eb->ts_ns) {
+		return -1;
+	}
+	if (ea->ts_ns > eb->ts_ns) {
+		return 1;
+	}
+	return 0;
+}
+
 static void sort_track_events(struct nsi_perfetto_track *track)
 {
 	if (track->int_count > 1) {
@@ -166,6 +206,10 @@ static void sort_track_events(struct nsi_perfetto_track *track)
 	if (track->double_count > 1) {
 		qsort(track->double_events, track->double_count,
 		      sizeof(*track->double_events), cmp_double_event);
+	}
+	if (track->instant_count > 1) {
+		qsort(track->instant_events, track->instant_count,
+		      sizeof(*track->instant_events), cmp_instant_event);
 	}
 }
 
@@ -198,12 +242,18 @@ static void parse_packet(const perfetto_protos_TracePacket *packet)
 	if (!event->has_track_uuid || !event->has_type) {
 		return;
 	}
-	if (event->type != perfetto_protos_TrackEvent_Type_TYPE_COUNTER) {
-		return;
-	}
 
 	struct nsi_perfetto_track *track = find_track_by_uuid(event->track_uuid);
 	if (!track) {
+		return;
+	}
+
+	if (event->type == perfetto_protos_TrackEvent_Type_TYPE_INSTANT) {
+		(void)track_add_instant_event(track, ts_ns);
+		return;
+	}
+
+	if (event->type != perfetto_protos_TrackEvent_Type_TYPE_COUNTER) {
 		return;
 	}
 
@@ -435,6 +485,30 @@ bool nsi_perfetto_trace_get_counter_double(const char *track_name, uint64_t time
 				  adjust_trace_timestamp(timestamp_ns), value);
 }
 
+static bool find_next_instant(const struct nsi_perfetto_track *track, uint64_t ts_ns,
+			      uint64_t *next_ts_ns)
+{
+	if (!track || track->instant_count == 0) {
+		return false;
+	}
+
+	size_t left = 0;
+	size_t right = track->instant_count;
+	while (left < right) {
+		size_t mid = left + (right - left) / 2;
+		if (track->instant_events[mid].ts_ns <= ts_ns) {
+			left = mid + 1;
+		} else {
+			right = mid;
+		}
+	}
+	if (left >= track->instant_count) {
+		return false;
+	}
+	*next_ts_ns = track->instant_events[left].ts_ns;
+	return true;
+}
+
 bool nsi_perfetto_trace_get_next_counter_time(const char *track_name, uint64_t timestamp_ns,
 					   uint64_t *next_timestamp_ns)
 {
@@ -465,6 +539,29 @@ bool nsi_perfetto_trace_get_next_counter_time(const char *track_name, uint64_t t
 		next_trace += trace_time_offset;
 	}
 	*next_timestamp_ns = next_trace;
+	return true;
+}
+
+bool nsi_perfetto_trace_get_next_instant_time(const char *track_name, uint64_t timestamp_ns,
+					      uint64_t *next_timestamp_ns)
+{
+	ensure_loaded();
+	if (next_timestamp_ns == NULL) {
+		return false;
+	}
+
+	uint64_t trace_now = adjust_trace_timestamp(timestamp_ns);
+	const struct nsi_perfetto_track *track = find_track_by_name(track_name);
+	uint64_t next_instant = UINT64_MAX;
+
+	if (!find_next_instant(track, trace_now, &next_instant)) {
+		return false;
+	}
+
+	if (trace_time_offset) {
+		next_instant += trace_time_offset;
+	}
+	*next_timestamp_ns = next_instant;
 	return true;
 }
 
