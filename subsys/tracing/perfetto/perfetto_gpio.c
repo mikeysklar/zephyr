@@ -148,7 +148,8 @@ void perfetto_gpio_init_tracks(void)
 
 			perfetto_emit_counter_track_descriptor(track_uuid,
 							       port_uuid,
-							       track_name);
+							       track_name,
+							       PERFETTO_COUNTER_UNIT_COUNT);
 			perfetto_emit_counter(track_uuid, 0);
 		}
 
