@@ -25,6 +25,14 @@ extern "C" {
 #define UART_GROUP_TRACK_UUID 5ULL
 #define UART_TRACK_UUID_BASE 0x2000ULL
 
+/* Counter units for Perfetto counter tracks. */
+typedef enum {
+	PERFETTO_COUNTER_UNIT_UNSPECIFIED = 0,
+	PERFETTO_COUNTER_UNIT_TIME_NS = 1,
+	PERFETTO_COUNTER_UNIT_COUNT = 2,
+	PERFETTO_COUNTER_UNIT_BYTES = 3,
+} perfetto_counter_unit_t;
+
 /**
  * @brief Initialize the Perfetto encoder
  *
@@ -188,10 +196,12 @@ void perfetto_emit_track_descriptor(uint64_t track_uuid,
  * @param track_uuid Unique track UUID for this counter
  * @param parent_uuid Parent track UUID (typically process UUID)
  * @param name Human-readable name for the counter track
+ * @param unit Unit for the counter values
  */
 void perfetto_emit_counter_track_descriptor(uint64_t track_uuid,
 					    uint64_t parent_uuid,
-					    const char *name);
+					    const char *name,
+					    perfetto_counter_unit_t unit);
 
 /**
  * @brief Emit a counter value event
