@@ -122,10 +122,12 @@ static uint64_t intern_string(struct intern_entry *table, size_t table_size,
 
 uint64_t perfetto_get_timestamp_ns(void)
 {
-	/* Use k_uptime_ticks and convert to nanoseconds */
-	int64_t ticks = k_uptime_ticks();
-
-	return (uint64_t)k_ticks_to_ns_floor64(ticks);
+	/* Use hardware cycles for higher-resolution timestamps. */
+#if defined(CONFIG_TIMER_HAS_64BIT_CYCLE_COUNTER)
+	return k_cyc_to_ns_floor64(k_cycle_get_64());
+#else
+	return k_cyc_to_ns_floor64((uint64_t)k_cycle_get_32());
+#endif
 }
 
 uint64_t perfetto_get_process_uuid(void)
@@ -679,7 +681,8 @@ void perfetto_emit_track_descriptor(uint64_t track_uuid,
 
 void perfetto_emit_counter_track_descriptor(uint64_t track_uuid,
 					    uint64_t parent_uuid,
-					    const char *name)
+					    const char *name,
+					    perfetto_counter_unit_t unit)
 {
 	if (!perfetto_start()) {
 		return;
@@ -688,9 +691,11 @@ void perfetto_emit_counter_track_descriptor(uint64_t track_uuid,
 	perfetto_protos_TrackDescriptor desc = perfetto_protos_TrackDescriptor_init_zero;
 	perfetto_protos_CounterDescriptor counter = perfetto_protos_CounterDescriptor_init_zero;
 
-	/* Set up counter descriptor - unit is COUNT for GPIO (0/1 values) */
-	counter.has_unit = true;
-	counter.unit = perfetto_protos_CounterDescriptor_Unit_UNIT_COUNT;
+	/* Set up counter descriptor unit. */
+	if (unit != PERFETTO_COUNTER_UNIT_UNSPECIFIED) {
+		counter.has_unit = true;
+		counter.unit = (perfetto_protos_CounterDescriptor_Unit)unit;
+	}
 
 	/* Set up track descriptor */
 	desc.has_uuid = true;
