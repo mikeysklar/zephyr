@@ -1,0 +1,8 @@
+# Copyright (c) 2026 Adafruit Industries
+# SPDX-License-Identifier: Apache-2.0
+
+description: SDL based emulated I2S controller for native_sim
+
+compatible: "zephyr,i2s-sdl"
+
+include: base.yaml

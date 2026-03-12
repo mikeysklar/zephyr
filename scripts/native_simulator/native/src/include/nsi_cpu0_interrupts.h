@@ -10,6 +10,7 @@
 #define OFFLOAD_SW_IRQ 1
 #define COUNTER_EVENT_IRQ 2
 #define GPIO_TRACE_IRQ 3
+#define I2S_SDL_IRQ 4
 
 /*
  * This interrupt will awake the CPU if IRQs are not locked,
