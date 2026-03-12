@@ -14,6 +14,10 @@ zephyr_library_sources_ifdef(CONFIG_TRACING_GPIO
   perfetto_gpio.c
 )
 
+zephyr_library_sources_ifdef(CONFIG_I2S_SDL
+  perfetto_i2s.c
+)
+
 # Generate nanopb sources from proto file
 zephyr_nanopb_sources(zephyr proto/perfetto_trace.proto)
 
