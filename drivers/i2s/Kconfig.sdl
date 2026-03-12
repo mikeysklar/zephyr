@@ -1,0 +1,14 @@
+# SDL based emulated I2S configuration options
+
+# Copyright (c) 2026 Adafruit Industries
+# SPDX-License-Identifier: Apache-2.0
+
+config I2S_SDL
+	bool "SDL based emulated I2S"
+	default y
+	depends on DT_HAS_ZEPHYR_I2S_SDL_ENABLED
+	select HAS_SDL
+	help
+	  Enable SDL based emulated I2S driver for native_sim.
+	  Audio is played through SDL2 audio subsystem and sample
+	  values are emitted as Perfetto counter tracks.

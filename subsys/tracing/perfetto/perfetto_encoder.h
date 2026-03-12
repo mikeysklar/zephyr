@@ -24,6 +24,8 @@ extern "C" {
 #define EMULATED_TRACK_UUID 4ULL
 #define UART_GROUP_TRACK_UUID 5ULL
 #define UART_TRACK_UUID_BASE 0x2000ULL
+#define I2S_GROUP_TRACK_UUID 6ULL
+#define I2S_TRACK_UUID_BASE 0x3000ULL
 
 /* Counter units for Perfetto counter tracks. */
 typedef enum {
@@ -210,6 +212,16 @@ void perfetto_emit_counter_track_descriptor(uint64_t track_uuid,
  * @param value Counter value (0 or 1 for GPIO)
  */
 void perfetto_emit_counter(uint64_t track_uuid, int64_t value);
+
+/**
+ * @brief Emit a counter value event with an explicit timestamp
+ *
+ * @param track_uuid Track UUID for the counter
+ * @param value Counter value
+ * @param timestamp_ns Timestamp in nanoseconds
+ */
+void perfetto_emit_counter_at(uint64_t track_uuid, int64_t value,
+			      uint64_t timestamp_ns);
 
 /**
  * @brief Start Perfetto tracing

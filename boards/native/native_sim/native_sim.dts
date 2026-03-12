@@ -200,6 +200,10 @@
 		width = <320>;
 	};
 
+	i2s0: i2s_sdl {
+		compatible = "zephyr,i2s-sdl";
+	};
+
 	input_sdl_touch: input-sdl-touch {
 		compatible = "zephyr,input-sdl-touch";
 		display = <&sdl_dc>;
