@@ -16,6 +16,9 @@
 #ifdef CONFIG_TRACING_GPIO
 #include "perfetto_gpio.h"
 #endif
+#ifdef CONFIG_I2S_SDL
+#include "perfetto_i2s.h"
+#endif
 #include "proto/perfetto_trace.pb.h"
 
 /* Sequence flags */
@@ -725,7 +728,8 @@ void perfetto_emit_counter_track_descriptor(uint64_t track_uuid,
 	}
 }
 
-void perfetto_emit_counter(uint64_t track_uuid, int64_t value)
+static void perfetto_emit_counter_internal(uint64_t track_uuid, int64_t value,
+					   uint64_t timestamp_ns)
 {
 	perfetto_protos_TracePacket packet = perfetto_protos_TracePacket_init_zero;
 	perfetto_protos_TrackEvent event = perfetto_protos_TrackEvent_init_zero;
@@ -740,7 +744,7 @@ void perfetto_emit_counter(uint64_t track_uuid, int64_t value)
 
 	/* Set up trace packet */
 	packet.has_timestamp = true;
-	packet.timestamp = perfetto_get_timestamp_ns();
+	packet.timestamp = timestamp_ns;
 	packet.has_trusted_packet_sequence_id = true;
 	packet.trusted_packet_sequence_id = CONFIG_PERFETTO_TRUSTED_SEQUENCE_ID;
 	packet.has_sequence_flags = true;
@@ -754,6 +758,18 @@ void perfetto_emit_counter(uint64_t track_uuid, int64_t value)
 	if (pb_encode(&stream, perfetto_protos_TracePacket_fields, &packet)) {
 		emit_packet(encode_buffer, stream.bytes_written);
 	}
+}
+
+void perfetto_emit_counter(uint64_t track_uuid, int64_t value)
+{
+	perfetto_emit_counter_internal(track_uuid, value,
+				       perfetto_get_timestamp_ns());
+}
+
+void perfetto_emit_counter_at(uint64_t track_uuid, int64_t value,
+			      uint64_t timestamp_ns)
+{
+	perfetto_emit_counter_internal(track_uuid, value, timestamp_ns);
 }
 
 uint64_t perfetto_get_uart_track_uuid(uint32_t dev_index)
@@ -855,6 +871,12 @@ bool perfetto_start(void)
 	perfetto_emit_track_descriptor(UART_GROUP_TRACK_UUID, EMULATED_TRACK_UUID, "UART");
 
 	perfetto_uart_init_tracks();
+#endif
+
+#ifdef CONFIG_I2S_SDL
+	/* Emit I2S group track under Emulated */
+	perfetto_emit_track_descriptor(I2S_GROUP_TRACK_UUID, EMULATED_TRACK_UUID, "I2S");
+	perfetto_i2s_init_tracks();
 #endif
 	return true;
 }

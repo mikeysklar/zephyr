@@ -6,6 +6,11 @@ zephyr_library()
 
 zephyr_library_sources(i2s_common.c)
 
+if(CONFIG_I2S_SDL)
+  zephyr_library_sources(i2s_sdl.c)
+  target_sources(native_simulator INTERFACE i2s_sdl_bottom.c)
+endif()
+
 # zephyr-keep-sorted-start
 zephyr_library_sources_ifdef(CONFIG_I2S_AMBIQ i2s_ambiq.c)
 zephyr_library_sources_ifdef(CONFIG_I2S_ESP32 i2s_esp32.c)
