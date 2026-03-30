@@ -65,7 +65,7 @@ struct flash_pages_layout {
  */
 struct flash_parameters {
 	/** Minimal write alignment and size */
-	const size_t write_block_size;
+	size_t write_block_size;
 
 	/** @cond INTERNAL_HIDDEN */
 	/* User code should call flash_params_get_ functions on flash_parameters
