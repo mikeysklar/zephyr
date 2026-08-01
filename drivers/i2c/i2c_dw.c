@@ -121,40 +121,81 @@ static int i2c_dw_error_chk(const struct device *dev)
 	 */
 	intr_stat.raw = read_intr_stat(reg_base);
 	ic_txabrt_src.raw = read_txabrt_src(reg_base);
+
+	/*
+	 * Distinguish a plain address NACK from a real bus fault. The caller
+	 * still gets -EIO either way; this only controls log severity. Note
+	 * dw->state cannot be used for this: the ISR assigns I2C_DW_CMD_ERROR
+	 * on any TX_ABRT before calling here, and a NACK *is* a TX_ABRT, so
+	 * CMD_ERROR is always set alongside NACK.
+	 */
+	bool addr_nack = false;
+	bool hard_fault = false;
+
 	/* NACK and SDA_STUCK are below TX_Abort */
 	if (intr_stat.bits.tx_abrt) {
 		/* check 7bit NACK Tx Abort */
 		if (ic_txabrt_src.bits.ADDR7BNACK) {
 			dw->state |= I2C_DW_NACK;
-			LOG_ERR_RATELIMIT("NACK on %s", dev->name);
+			addr_nack = true;
+			/*
+			 * A target NACKing its address is a normal I2C outcome,
+			 * not a driver fault. It is exactly how a bus scan
+			 * discovers which addresses are populated, so a single
+			 * scan produces one of these for every unpopulated
+			 * address, and some devices (Sensirion SHT4x, for one)
+			 * NACK reads while a conversion is in flight. The
+			 * condition is still reported to the caller as -EIO.
+			 */
+			LOG_DBG("NACK on %s", dev->name);
 		}
 		/* check SDA stuck low Tx abort, need to do bus recover */
 		if (ic_txabrt_src.bits.SDASTUCKLOW) {
 			dw->state |= I2C_DW_SDA_STUCK;
+			hard_fault = true;
 			LOG_ERR("SDA Stuck Low on %s", dev->name);
 		}
 		/* check if user abort the transmit */
 		if (ic_txabrt_src.bits.USRABRT) {
 			dw->state |= I2C_DW_USER_ABRT;
+			hard_fault = true;
 			LOG_ERR("User Abort on %s", dev->name);
 		}
 		/* TX abrt because STOP */
 		if (intr_stat.bits.stop_det) {
 			dw->state |= I2C_DW_USER_ABRT;
-			LOG_ERR_RATELIMIT("ABR and STOP on %s", dev->name);
+			/*
+			 * STOP is the normal consequence of an abort, including
+			 * the address-NACK above, so this fires on every probe
+			 * of an empty address too.
+			 */
+			LOG_DBG("ABR and STOP on %s", dev->name);
 		}
 	}
 
 	/* check SCL stuck low */
 	if (intr_stat.bits.scl_stuck_low) {
 		dw->state |= I2C_DW_SCL_STUCK;
+		hard_fault = true;
 		LOG_ERR("SCL Stuck Low on %s", dev->name);
 	}
 	if (dw->state & I2C_DW_ERR_MASK) {
 #if CONFIG_I2C_ALLOW_NO_STOP_TRANSACTIONS
 		dw->need_setup = true;
 #endif
-		LOG_ERR_RATELIMIT("IO Fail on %s", dev->name);
+		/*
+		 * Only report a genuine bus fault at error level. A plain
+		 * address NACK (with the STOP that necessarily follows it)
+		 * reaches here on every scan of an empty address, which
+		 * previously made i2c scanning unusable: one error line per
+		 * probed address, plus rate-limiter "Skipped N messages"
+		 * noise. Stuck SDA/SCL and a real user abort still log.
+		 */
+		if (addr_nack && !hard_fault) {
+			LOG_DBG("IO Fail (NACK) on %s", dev->name);
+		} else {
+			LOG_ERR_RATELIMIT("IO Fail on %s", dev->name);
+		}
 		return -EIO;
 	}
 	return 0;
