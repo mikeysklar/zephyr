@@ -167,6 +167,8 @@ extern "C" {
 #define sys_port_trace_k_timer_status_sync_enter(timer)
 #define sys_port_trace_k_timer_status_sync_blocking(timer, timeout)
 #define sys_port_trace_k_timer_status_sync_exit(timer, result)
+#define sys_port_trace_k_timer_cleanup_enter(timer)
+#define sys_port_trace_k_timer_cleanup_exit(timer, ret)
 
 /* RTIO hooks - disabled until perfetto backend support is added */
 #define sys_port_trace_rtio_is_disabled 1
