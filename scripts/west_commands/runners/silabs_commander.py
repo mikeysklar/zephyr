@@ -175,7 +175,23 @@ class SiLabsCommanderBinaryRunner(ZephyrBinaryRunner):
 
         else:
             # use hex or bin file provided by the buildsystem, preferring .hex over .bin
-            if self.hex_name is not None and os.path.isfile(self.hex_name):
+            #
+            # EXCEPT: a .rps bin_file is not a plain binary. SiWx91x's SoC
+            # CMakeLists (soc/silabs/silabs_siwx91x/CMakeLists.txt) overrides
+            # runners_yaml_props_target's bin_file to the signed/unsigned RPS
+            # boot container specifically so 'west flash' picks it up here --
+            # it is the deliberately-selected artifact for this SoC family,
+            # not a fallback. It must outrank a coexisting .hex (a board that
+            # also enables CONFIG_BUILD_OUTPUT_HEX would otherwise silently
+            # flash a hex image with no boot header, which does not boot),
+            # and it must be passed as-is rather than wrapped in
+            # '--binary --address': commander recognizes the .rps extension
+            # and routes it through the bootloader's upgrade path, which a
+            # raw --binary write bypasses.
+            if self.bin_name is not None and self.bin_name.endswith('.rps') and os.path.isfile(self.bin_name):
+                flash_file = self.bin_name
+                flash_args = [flash_file]
+            elif self.hex_name is not None and os.path.isfile(self.hex_name):
                 flash_file = self.hex_name
                 flash_args = [flash_file]
             elif self.bin_name is not None and os.path.isfile(self.bin_name):
