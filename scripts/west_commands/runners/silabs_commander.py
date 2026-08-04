@@ -161,12 +161,17 @@ class SiLabsCommanderBinaryRunner(ZephyrBinaryRunner):
 
             flash_file = self.file
 
-            if self.file_type == FileType.HEX:
+            if self.file.endswith('.rps'):
+                # SiWx91x boot image container; commander recognizes it by
+                # extension and routes it through the bootloader's upgrade
+                # path. Raw hex/bin images do not boot on this SoC family.
+                flash_args = [flash_file]
+            elif self.file_type == FileType.HEX:
                 flash_args = [flash_file]
             elif self.file_type == FileType.BIN:
                 flash_args = ['--binary', '--address', f'0x{flash_addr:x}', flash_file]
             else:
-                raise ValueError('Cannot flash; this runner only supports hex and bin files')
+                raise ValueError('Cannot flash; this runner only supports hex, bin and rps files')
 
         else:
             # use hex or bin file provided by the buildsystem, preferring .hex over .bin
