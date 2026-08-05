@@ -1,0 +1,93 @@
+name: SiWx917 fork CI
+
+# Upstream's own twister.yaml/compliance.yml etc. are gated to
+# `github.repository_owner == 'zephyrproject-rtos'` and run on org-only
+# self-hosted runners, so they never fire on this fork. This workflow is
+# scoped to what our siwx917 patches actually touch, on ordinary
+# GitHub-hosted runners. `siwx917/integration` is the branch CircuitPython's
+# zephyr-config/west.yml actually pins — that's what needs coverage, not
+# just `main`.
+
+on:
+  push:
+    branches: [main, 'siwx917/**']
+  pull_request:
+    branches: [main, 'siwx917/**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: siwx917-ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runner-tests:
+    name: west runner unit tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install test deps
+        run: pip install --upgrade pip west -r scripts/requirements-build-test.txt
+
+      - name: pytest scripts/west_commands
+        working-directory: scripts/west_commands
+        run: python3 -m pytest tests -v
+
+  build-siwx917:
+    name: build siwx917_dk2605a
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout zephyr
+        uses: actions/checkout@v4
+        with:
+          path: zephyr
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up west workspace
+        run: |
+          pip install --upgrade pip west
+          west init -l zephyr
+          west update -o=--depth=1 -n
+          west zephyr-export
+          pip install -r zephyr/scripts/requirements-build-test.txt
+
+      - name: Install arm-zephyr-eabi toolchain
+        # Installs to the default ${HOME}/zephyr-sdk-<version>, which
+        # Zephyr's CMake SDK detection scans for automatically.
+        run: west sdk install -t arm-zephyr-eabi -H
+
+      - name: Blinky sanity build
+        working-directory: zephyr
+        run: west build -p always -b siwx917_dk2605a samples/basic/blinky
+
+      - name: Driver files touched by our siwx917 patches
+        # tests/drivers/i2c and tests/drivers/wifi are all fixture-tests
+        # (dt_alias_exists("gy271") etc.) that twister silently filters
+        # to zero on this board -- confirmed locally, would have been a
+        # falsely-green check. Instead force-enable the two Kconfigs that
+        # gate the actual driver files: I2C_DW (drivers/i2c/i2c_dw.c,
+        # touched by the NACK-handling fix) is DT_HAS_SNPS_DESIGNWARE_I2C
+        # default-y once CONFIG_I2C=y, and this board's DT already has a
+        # real bus (`ulpi2c`, status=okay) so it needs no overlay.
+        # WIFI_SILABS_SIWX91X (drivers/wifi/siwx91x/siwx91x_wifi_scan.c,
+        # touched by the RSSI-sign fix) is default-y once
+        # CONFIG_NETWORKING=y and CONFIG_WIFI=y. Confirmed locally that
+        # both .c files land in the build with just these three symbols
+        # added on top of blinky -- no devicetree overlay needed.
+        working-directory: zephyr
+        run: |
+          west build -p always -b siwx917_dk2605a samples/basic/blinky \
+            -d build-drivers \
+            -- -DCONFIG_I2C=y -DCONFIG_NETWORKING=y -DCONFIG_WIFI=y
+          test -f build-drivers/zephyr/drivers/i2c/CMakeFiles/drivers__i2c.dir/i2c_dw.c.obj
+          test -f build-drivers/zephyr/drivers/wifi/CMakeFiles/drivers__wifi.dir/siwx91x/siwx91x_wifi_scan.c.obj
