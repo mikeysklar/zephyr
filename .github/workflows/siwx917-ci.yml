@@ -33,7 +33,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install test deps
-        run: pip install --upgrade pip west -r scripts/requirements-build-test.txt
+        run: pip install --upgrade pip -r scripts/requirements.txt
 
       - name: pytest scripts/west_commands
         working-directory: scripts/west_commands
@@ -53,13 +53,18 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install west + build deps
+        # requirements.txt (via requirements-base.txt) pulls in jsonschema
+        # and pyserial, which west's own extension commands (zephyr-export
+        # included) import at load time -- must be installed before any
+        # west subcommand beyond init/update runs, not after.
+        run: pip install --upgrade pip -r zephyr/scripts/requirements.txt
+
       - name: Set up west workspace
         run: |
-          pip install --upgrade pip west
           west init -l zephyr
           west update -o=--depth=1 -n
           west zephyr-export
-          pip install -r zephyr/scripts/requirements-build-test.txt
 
       - name: Install arm-zephyr-eabi toolchain
         # Installs to the default ${HOME}/zephyr-sdk-<version>, which
