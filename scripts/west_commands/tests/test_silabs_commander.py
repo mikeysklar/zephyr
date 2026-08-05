@@ -34,8 +34,10 @@ def test_rps_bin_outranks_hex(cc, req, runner_config):
     '''A .rps bin_file wins over a coexisting hex_file — a hex with no boot
     header does not boot on this SoC family, so it must not be picked.'''
     cfg = runner_config._replace(bin_file=RC_KERNEL_RPS)
-    with patch('runners.silabs_commander.os.path.isfile',
-               side_effect=isfile_only(cfg.hex_file, RC_KERNEL_RPS)):
+    with patch(
+        'runners.silabs_commander.os.path.isfile',
+        side_effect=isfile_only(cfg.hex_file, RC_KERNEL_RPS),
+    ):
         runner = SiLabsCommanderBinaryRunner.create(cfg, parse_args())
         runner.run('flash')
 
@@ -49,8 +51,10 @@ def test_rps_bin_outranks_hex(cc, req, runner_config):
 def test_hex_wins_when_bin_is_not_rps(cc, req, runner_config):
     '''Existing behavior is preserved: a non-.rps bin_file does not outrank
     a coexisting hex_file.'''
-    with patch('runners.silabs_commander.os.path.isfile',
-               side_effect=isfile_only(runner_config.hex_file, runner_config.bin_file)):
+    with patch(
+        'runners.silabs_commander.os.path.isfile',
+        side_effect=isfile_only(runner_config.hex_file, runner_config.bin_file),
+    ):
         runner = SiLabsCommanderBinaryRunner.create(runner_config, parse_args())
         runner.run('flash')
 
@@ -63,8 +67,9 @@ def test_hex_wins_when_bin_is_not_rps(cc, req, runner_config):
 def test_plain_bin_falls_back_to_binary_address(cc, req, runner_config):
     '''A non-.rps bin_file with no hex present still flashes via
     --binary --address, as before.'''
-    with patch('runners.silabs_commander.os.path.isfile',
-               side_effect=isfile_only(runner_config.bin_file)):
+    with patch(
+        'runners.silabs_commander.os.path.isfile', side_effect=isfile_only(runner_config.bin_file)
+    ):
         runner = SiLabsCommanderBinaryRunner.create(runner_config, parse_args())
         runner.run('flash')
 
@@ -79,8 +84,7 @@ def test_missing_rps_falls_back_to_hex(cc, req, runner_config):
     '''bin_file names a .rps that was never built (e.g. a non-siwx91x board
     reusing this runner) — it must not be selected just because it is named.'''
     cfg = runner_config._replace(bin_file=RC_KERNEL_RPS)
-    with patch('runners.silabs_commander.os.path.isfile',
-               side_effect=isfile_only(cfg.hex_file)):
+    with patch('runners.silabs_commander.os.path.isfile', side_effect=isfile_only(cfg.hex_file)):
         runner = SiLabsCommanderBinaryRunner.create(cfg, parse_args())
         runner.run('flash')
 
