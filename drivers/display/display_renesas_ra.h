@@ -9,7 +9,16 @@
 
 #include <zephyr/drivers/display.h>
 
-#define ROUND_UP_64BYTES(x)    ROUND_UP(x, NUM_BITS(uint64_t))
+/*
+ * Round a bit count up to a whole number of 64-byte units.
+ *
+ * The GLCDC requires the framebuffer base address and the memory stride to
+ * both be 64-byte aligned (r_glcdc.c, GLCDC_PRV_ADDRESS_ALIGNMENT_64B). The
+ * argument here is a bit count, so the alignment has to be expressed in bits
+ * as well: 64 bytes, not NUM_BITS(uint64_t), which is 64 bits and therefore
+ * only rounds to 8 bytes.
+ */
+#define ROUND_UP_64BYTES(x)    ROUND_UP(x, 64 * BITS_PER_BYTE)
 #define INPUT_FORMAT_PIXEL(n)  DT_INST_PROP(n, input_pixel_format)
 #define OUTPUT_FORMAT_PIXEL(n) DT_INST_PROP(n, output_pixel_format)
 
