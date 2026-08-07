@@ -266,8 +266,8 @@ static int ra_display_set_pixel_format(const struct device *dev,
 	memcpy(&layer_cfg.layer, &data->display_fsp_cfg.layer[0], sizeof(display_layer_t));
 	layer_cfg.input.format = hardware_pixel_format;
 	layer_cfg.input.hstride =
-		ROUND_UP(layer_cfg.input.hsize * DISPLAY_BITS_PER_PIXEL(set_pixel_format),
-			 NUM_BITS(uint64_t)) /
+		ROUND_UP_64BYTES(layer_cfg.input.hsize *
+				 DISPLAY_BITS_PER_PIXEL(set_pixel_format)) /
 		DISPLAY_BITS_PER_PIXEL(set_pixel_format);
 
 	err = R_GLCDC_LayerChange(&data->display_ctrl, &layer_cfg, DISPLAY_FRAME_LAYER_1);
@@ -436,7 +436,7 @@ static int display_init(const struct device *dev)
 	RENESAS_RA_GLCDC_DEVICE_PINCTRL_INIT(id);                                                  \
 	IRQ_CONFIGURE_FUNC(id)                                                                     \
 	FRAME_BUFFER_SECTION(id)                                                                   \
-	static uint8_t __aligned(8)                                                                \
+	static uint8_t __aligned(64)                                                               \
 	fb_background##id[CONFIG_RENESAS_RA_GLCDC_FB_NUM * RENESAS_RA_FRAME_BUFFER_LEN(id)];       \
 	static const glcdc_extended_cfg_t display_extend_cfg##id = {                               \
 		.tcon_hsync = RENESAS_RA_GLCDC_TCON_HSYNC_PIN(id),                                 \
