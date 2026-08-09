@@ -128,7 +128,14 @@ const ether_extended_cfg_t g_ether0_extended_cfg_t = {
 const ether_phy_extended_cfg_t g_ether_phy0_extended_cfg = {
 	.p_target_init = ETHER_DEFAULT, .p_target_link_partner_ability_get = ETHER_DEFAULT};
 
-const ether_cfg_t g_ether0_cfg = {
+/* Not const: .promiscuous is runtime state. The FSP re-applies it to
+ * ECMR.PRM from this struct on EVERY link establishment (r_ether.c:1790,
+ * inside ether_do_link's link-up path), so a set_config that only wrote the
+ * register would be silently undone by the next cable unplug or autoneg
+ * cycle and a bridge would go deaf with no error. The register write in
+ * renesas_ra_eth_set_config() gives immediacy; this field gives durability.
+ */
+ether_cfg_t g_ether0_cfg = {
 	.channel = ETHER_CHANNEL0,
 	.zerocopy = ETHER_ZEROCOPY_ENABLE,
 	.multicast = ETHER_MULTICAST_ENABLE,
@@ -153,8 +160,44 @@ const ether_cfg_t g_ether0_cfg = {
 static enum ethernet_hw_caps renesas_ra_eth_get_capabilities(const struct device *dev __unused,
 							     struct net_if *iface __unused)
 {
-	return ETHERNET_LINK_10BASE | ETHERNET_LINK_100BASE;
+	return ETHERNET_LINK_10BASE | ETHERNET_LINK_100BASE
+#if defined(CONFIG_NET_PROMISCUOUS_MODE)
+	       /* ETHERC has ECMR.PRM and the FSP plumbs it (r_ether.c:1790);
+		* without this capability bit eth_bridge_iface_add() rejects
+		* the interface with -EINVAL and promisc mgmt returns -ENOTSUP.
+		*/
+	       | ETHERNET_PROMISC_MODE
+#endif
+		;
 }
+
+#if defined(CONFIG_NET_PROMISCUOUS_MODE)
+static int renesas_ra_eth_set_config(const struct device *dev, struct net_if *iface __unused,
+				     enum ethernet_config_type type,
+				     const struct ethernet_config *config)
+{
+	struct renesas_ra_eth_context *ctx = dev->data;
+
+	if (type != ETHERNET_CONFIG_TYPE_PROMISC_MODE) {
+		return -ENOTSUP;
+	}
+
+	/* Durable half: the FSP copies this field into ECMR.PRM on every
+	 * link establishment, so this survives unplug/replug and autoneg. */
+	g_ether0_cfg.promiscuous =
+		config->promisc_mode ? ETHER_PROMISCUOUS_ENABLE : ETHER_PROMISCUOUS_DISABLE;
+
+	/* Immediate half: poke the live register too, but only once the FSP
+	 * has the controller open - before R_ETHER_Open() the module clock
+	 * may be gated and p_reg_etherc unset. */
+	if (ctx->ctrl.open != 0U && ctx->ctrl.p_reg_etherc != NULL) {
+		((R_ETHERC0_Type *)ctx->ctrl.p_reg_etherc)->ECMR_b.PRM =
+			config->promisc_mode ? 1U : 0U;
+	}
+
+	return 0;
+}
+#endif /* CONFIG_NET_PROMISCUOUS_MODE */
 
 void renesas_ra_eth_callback(ether_callback_args_t *p_args)
 {
@@ -342,6 +385,9 @@ static const struct ethernet_api api_funcs = {
 	.get_capabilities = renesas_ra_eth_get_capabilities,
 	.get_phy = renesas_ra_eth_get_phy,
 	.send = renesas_ra_eth_tx,
+#if defined(CONFIG_NET_PROMISCUOUS_MODE)
+	.set_config = renesas_ra_eth_set_config,
+#endif
 };
 
 static void renesas_ra_eth_isr(const struct device *dev)
