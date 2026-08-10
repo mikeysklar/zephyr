@@ -61,6 +61,28 @@ static int flash_renesas_ra_ospi_b_wait_operation(ospi_b_instance_ctrl_t *p_ctrl
 	spi_flash_status_t status = {RESET_VALUE};
 	uint32_t spins = 0;
 
+	/*
+	 * Floor before the first status read, and it is load-bearing.
+	 *
+	 * WIP in the flash's status register asserts when the DIE starts the
+	 * operation, not when the controller queues it. Polling fast enough
+	 * to land in the gap between the combination-write push and WIP
+	 * asserting reads WIP=0, returns "done", and lets the caller issue
+	 * the next program on top of an in-flight one - which on Semper NOR
+	 * is a prohibited second program to live 16-byte ECC units. Measured,
+	 * the expensive way: a first version of this hybrid poll spun at
+	 * 10 us with no floor and corrupted 864 of 864 blocks of a 54 MB
+	 * push, every write, from the first block. The original code's
+	 * tick-rounded k_sleep made the race rare rather than impossible,
+	 * which is a plausible mechanism for the long-standing intermittent
+	 * single-block verify miss.
+	 *
+	 * 150 us is below any real completion: a 64-byte program is ~300 us
+	 * and erases are milliseconds, so nothing is missed; an operation
+	 * still in flight has certainly raised WIP by then.
+	 */
+	k_busy_wait(150);
+
 	status.write_in_progress = true;
 	while (status.write_in_progress) {
 		/* Get device status */
@@ -70,16 +92,12 @@ static int flash_renesas_ra_ospi_b_wait_operation(ospi_b_instance_ctrl_t *p_ctrl
 			return -EIO;
 		}
 		/*
-		 * Hybrid poll. k_sleep(K_USEC(50)) rounds up to a whole tick
-		 * (100 us at 10 kHz), and a 64-byte page program - the largest
-		 * burst the combination function supports - completes in about
-		 * 300 us. Sleeping makes the tick quantum the floor on every
-		 * program: measured 71 KB/s effective write rate, ~880 us per
-		 * 64-byte chunk, roughly half of it sleep. So poll the status
-		 * register at 10 us for the first ~600 us, which covers a
-		 * program comfortably, then fall back to sleeping for the
-		 * operations that genuinely take long - erases at ~900 ms -
-		 * where a 0.6 ms busy prefix is noise and yielding matters.
+		 * Hybrid poll: 10 us spins for the first ~600 us so page
+		 * programs (~300 us) finish inside the spin phase instead of
+		 * paying the 100 us tick quantum per poll (measured 71 KB/s
+		 * before, ~880 us per 64-byte burst, half of it sleep), then
+		 * tick sleeps for erases, where yielding matters and 0.6 ms
+		 * of busy prefix is noise.
 		 */
 		if (spins < 60U) {
 			spins++;
