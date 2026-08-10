@@ -128,7 +128,14 @@ const ether_extended_cfg_t g_ether0_extended_cfg_t = {
 const ether_phy_extended_cfg_t g_ether_phy0_extended_cfg = {
 	.p_target_init = ETHER_DEFAULT, .p_target_link_partner_ability_get = ETHER_DEFAULT};
 
-const ether_cfg_t g_ether0_cfg = {
+/* Not const: .promiscuous is runtime state. The FSP re-applies it to
+ * ECMR.PRM from this struct on EVERY link establishment (r_ether.c:1790,
+ * inside ether_do_link's link-up path), so a set_config that only wrote the
+ * register would be silently undone by the next cable unplug or autoneg
+ * cycle and a bridge would go deaf with no error. The register write in
+ * renesas_ra_eth_set_config() gives immediacy; this field gives durability.
+ */
+ether_cfg_t g_ether0_cfg = {
 	.channel = ETHER_CHANNEL0,
 	.zerocopy = ETHER_ZEROCOPY_ENABLE,
 	.multicast = ETHER_MULTICAST_ENABLE,
@@ -153,8 +160,58 @@ const ether_cfg_t g_ether0_cfg = {
 static enum ethernet_hw_caps renesas_ra_eth_get_capabilities(const struct device *dev __unused,
 							     struct net_if *iface __unused)
 {
-	return ETHERNET_LINK_10BASE | ETHERNET_LINK_100BASE;
+	return ETHERNET_LINK_10BASE | ETHERNET_LINK_100BASE
+#if defined(CONFIG_NET_PROMISCUOUS_MODE)
+	       /* ETHERC has ECMR.PRM and the FSP plumbs it (r_ether.c:1790);
+		* without this capability bit eth_bridge_iface_add() rejects
+		* the interface with -EINVAL and promisc mgmt returns -ENOTSUP.
+		*/
+	       | ETHERNET_PROMISC_MODE
+#endif
+		;
 }
+
+#if defined(CONFIG_NET_PROMISCUOUS_MODE)
+static int renesas_ra_eth_set_config(const struct device *dev, struct net_if *iface __unused,
+				     enum ethernet_config_type type,
+				     const struct ethernet_config *config)
+{
+	struct renesas_ra_eth_context *ctx = dev->data;
+
+	if (type != ETHERNET_CONFIG_TYPE_PROMISC_MODE) {
+		return -ENOTSUP;
+	}
+
+	/* Durable half: the FSP copies this field into ECMR.PRM on every
+	 * link establishment, so this survives unplug/replug and autoneg. */
+	g_ether0_cfg.promiscuous =
+		config->promisc_mode ? ETHER_PROMISCUOUS_ENABLE : ETHER_PROMISCUOUS_DISABLE;
+
+	/* Immediate half: poke the live register too, but only once the FSP
+	 * has the controller open - before R_ETHER_Open() the module clock
+	 * may be gated and p_reg_etherc unset.
+	 *
+	 * PRM must not be flipped under a running receiver. ECMR is a
+	 * configuration register; the FSP only ever writes PRM inside
+	 * ether_config_ethernet(), before it sets RE/TE. Measured cost of
+	 * ignoring that: toggling PRM 1->0 with RE=1 mid-traffic left the MAC
+	 * receiving at a crawl - too slow to make progress, too alive to look
+	 * down - for the remaining life of an image push. So: receiver off,
+	 * PRM, receiver on. The gap is microseconds; frames arriving inside
+	 * it are lost exactly as during any link renegotiation.
+	 */
+	if (ctx->ctrl.open != 0U && ctx->ctrl.p_reg_etherc != NULL) {
+		R_ETHERC0_Type *etherc = (R_ETHERC0_Type *)ctx->ctrl.p_reg_etherc;
+		uint32_t re = etherc->ECMR_b.RE;
+
+		etherc->ECMR_b.RE = 0U;
+		etherc->ECMR_b.PRM = config->promisc_mode ? 1U : 0U;
+		etherc->ECMR_b.RE = re;
+	}
+
+	return 0;
+}
+#endif /* CONFIG_NET_PROMISCUOUS_MODE */
 
 void renesas_ra_eth_callback(ether_callback_args_t *p_args)
 {
@@ -295,12 +352,21 @@ static int renesas_ra_eth_tx(const struct device *dev, struct net_pkt *pkt)
 	fsp_err_t err;
 	int ret;
 
+	/*
+	 * Instead of immediately dropping the packet,
+	 * wait briefly for a free tx descriptor to become available.
+	 */
+	if (k_sem_take(&ctx->tx_sem, K_MSEC(ETHER_TX_TIMEOUT_MS)) != 0) {
+		return -ENOBUFS;
+	}
+
 	tx_buf = ctx->txb_header[ctx->txb_idx].buf;
 	ctx->txb_idx = (ctx->txb_idx + 1) % (ctx->txb_num);
 
 	ret = net_pkt_read(pkt, tx_buf, len);
 	if (ret < 0) {
 		LOG_DBG("Failed to copy packet to tx buffer");
+		k_sem_give(&ctx->tx_sem);
 		return ret;
 	}
 	/* Pad short packets */
@@ -313,15 +379,6 @@ static int renesas_ra_eth_tx(const struct device *dev, struct net_pkt *pkt)
 	err = R_ETHER_Write(&ctx->ctrl, tx_buf, len);
 	if (err != FSP_SUCCESS) {
 		LOG_DBG("R_ETHER_Write failed (%d)", err);
-		return -EIO;
-	}
-
-	if (k_sem_take(&ctx->tx_sem, K_NO_WAIT) != 0) {
-		return -ENOBUFS;
-	}
-
-	err = R_ETHER_Write(&ctx->ctrl, tx_buf, len);
-	if (err != FSP_SUCCESS) {
 		k_sem_give(&ctx->tx_sem);
 		return -EIO;
 	}
@@ -342,6 +399,9 @@ static const struct ethernet_api api_funcs = {
 	.get_capabilities = renesas_ra_eth_get_capabilities,
 	.get_phy = renesas_ra_eth_get_phy,
 	.send = renesas_ra_eth_tx,
+#if defined(CONFIG_NET_PROMISCUOUS_MODE)
+	.set_config = renesas_ra_eth_set_config,
+#endif
 };
 
 static void renesas_ra_eth_isr(const struct device *dev)
@@ -360,7 +420,11 @@ static struct net_pkt *renesas_ra_eth_rx(const struct device *dev)
 
 	err = R_ETHER_Read(&ctx->ctrl, (void *)&rx_buf, &len);
 
-	if ((err != FSP_SUCCESS) && (err != FSP_ERR_ETHER_ERROR_NO_DATA)) {
+	if (err == FSP_ERR_ETHER_ERROR_NO_DATA) {
+		return NULL;
+	}
+
+	if (err != FSP_SUCCESS) {
 		LOG_DBG("Failed to read packets");
 		goto out;
 	}
@@ -402,9 +466,7 @@ static void renesas_ra_eth_thread(void *p1, void *p2, void *p3)
 	while (true) {
 		res = k_sem_take(&ctx->rx_sem, K_MSEC(CONFIG_PHY_MONITOR_PERIOD));
 		if (res == 0) {
-			pkt = renesas_ra_eth_rx(dev);
-
-			if (pkt != NULL) {
+			while ((pkt = renesas_ra_eth_rx(dev)) != NULL) {
 				iface = net_pkt_iface(pkt);
 				res = net_recv_data(iface, pkt);
 				if (res < 0) {

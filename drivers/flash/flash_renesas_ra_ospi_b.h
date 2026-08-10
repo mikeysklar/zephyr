@@ -28,8 +28,19 @@
 #define SECTOR_SIZE_128K (0x20000)
 #define SECTOR_SIZE_256K (0x40000)
 
-/* Flash device timing */
-#define TIME_ERASE_256K (16000)
+/* Flash device timing.
+ *
+ * These are wait_operation() iteration budgets, not times: each iteration is
+ * at least one 10 us busy spin (first 60) or one tick-rounded 100 us sleep.
+ * TIME_ERASE_256K was 16000, or ~1.6 s of budget against a measured
+ * 899 ms/block on the S28HL512T - a 1.8x margin on a part whose erase time
+ * rises with temperature and wear, and a 54 MB push rolls those dice 217
+ * times. When it bites, it presents as an intermittent "erase failed" on one
+ * block partway through, which reads as a flash fault rather than a timeout.
+ * Doubled: a timeout costs nothing until it fires, and firing early is the
+ * only way this one can be wrong.
+ */
+#define TIME_ERASE_256K (32000)
 #define TIME_ERASE_4K   (1000U)
 #define TIME_WRITE      (1000U)
 
