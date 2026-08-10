@@ -189,10 +189,24 @@ static int renesas_ra_eth_set_config(const struct device *dev, struct net_if *if
 
 	/* Immediate half: poke the live register too, but only once the FSP
 	 * has the controller open - before R_ETHER_Open() the module clock
-	 * may be gated and p_reg_etherc unset. */
+	 * may be gated and p_reg_etherc unset.
+	 *
+	 * PRM must not be flipped under a running receiver. ECMR is a
+	 * configuration register; the FSP only ever writes PRM inside
+	 * ether_config_ethernet(), before it sets RE/TE. Measured cost of
+	 * ignoring that: toggling PRM 1->0 with RE=1 mid-traffic left the MAC
+	 * receiving at a crawl - too slow to make progress, too alive to look
+	 * down - for the remaining life of an image push. So: receiver off,
+	 * PRM, receiver on. The gap is microseconds; frames arriving inside
+	 * it are lost exactly as during any link renegotiation.
+	 */
 	if (ctx->ctrl.open != 0U && ctx->ctrl.p_reg_etherc != NULL) {
-		((R_ETHERC0_Type *)ctx->ctrl.p_reg_etherc)->ECMR_b.PRM =
-			config->promisc_mode ? 1U : 0U;
+		R_ETHERC0_Type *etherc = (R_ETHERC0_Type *)ctx->ctrl.p_reg_etherc;
+		uint32_t re = etherc->ECMR_b.RE;
+
+		etherc->ECMR_b.RE = 0U;
+		etherc->ECMR_b.PRM = config->promisc_mode ? 1U : 0U;
+		etherc->ECMR_b.RE = re;
 	}
 
 	return 0;
