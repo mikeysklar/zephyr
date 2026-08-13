@@ -138,7 +138,7 @@ config BT_CTLR_RX_PRIO_STACK_SIZE
 	# Hidden
 	int
 	depends on !BT_HCI_RAW
-	default 448
+	default 2048
 	help
 	  Controller's Co-Operative high priority Rx thread stack size.
 
