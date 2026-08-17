@@ -1,0 +1,18 @@
+identifier: adafruit_clue_nrf52840/nrf52840
+name: Adafruit CLUE nRF52840 Express
+type: mcu
+arch: arm
+toolchain:
+  - zephyr
+  - gnuarmemb
+supported:
+  - adc
+  - usbd
+  - ble
+  - watchdog
+  - counter
+  - display
+  - i2c
+  - spi
+  - uart
+vendor: adafruit

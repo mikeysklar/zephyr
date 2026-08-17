@@ -1,0 +1,22 @@
+/*
+ * Copyright (c) 2025 Adafruit Industries LLC
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/dts-v1/;
+#include "adafruit_clue_nrf52840_common.dtsi"
+#include <nordic/nrf52840_partition.dtsi>
+
+/ {
+	model = "Adafruit CLUE nRF52840 Express";
+	compatible = "adafruit,clue-nrf52840";
+
+	chosen {
+		zephyr,console = &uart0;
+		zephyr,shell-uart = &uart0;
+		zephyr,uart-mcumgr = &uart0;
+		zephyr,bt-mon-uart = &uart0;
+		zephyr,bt-c2h-uart = &uart0;
+	};
+};
