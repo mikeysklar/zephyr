@@ -1,0 +1,8 @@
+board:
+  name: adafruit_clue_nrf52840
+  full_name: CLUE nRF52840 Express
+  vendor: adafruit
+  socs:
+    - name: nrf52840
+      variants:
+        - name: uf2
