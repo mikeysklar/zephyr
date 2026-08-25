@@ -56,9 +56,9 @@ void *nsi_host_malloc(unsigned long size)
 	return malloc(size);
 }
 
-int nsi_host_open(const char *pathname, int flags)
+int nsi_host_open(const char *pathname, int flags, int mode)
 {
-	return open(pathname, flags);
+	return open(pathname, flags, mode);
 }
 
 long nsi_host_random(void)
