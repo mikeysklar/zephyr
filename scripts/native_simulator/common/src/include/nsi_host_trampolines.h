@@ -32,7 +32,7 @@ char *nsi_host_getcwd(char *buf, unsigned long size);
 char *nsi_host_getenv(const char *name);
 int nsi_host_isatty(int fd);
 void *nsi_host_malloc(unsigned long size);
-int nsi_host_open(const char *pathname, int flags);
+int nsi_host_open(const char *pathname, int flags, int mode);
 /* int nsi_host_printf (const char *fmt, ...); Use the nsi_tracing.h equivalents */
 long nsi_host_random(void);
 long nsi_host_read(int fd, void *buffer, unsigned long size);
