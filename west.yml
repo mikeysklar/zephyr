@@ -172,7 +172,13 @@ manifest:
       groups:
         - hal
     - name: hal_espressif
-      revision: 5e3b702250c3e05de5a4cb3a53f74fc3cd8094cf
+      # DEV OVERRIDE: points at mikeysklar/hal_espressif's
+      # esp32s31-zephyr-integration branch (adds the esp32s31 Zephyr
+      # integration layer this fork's soc/espressif/esp32s31 needs) instead
+      # of upstream zephyrproject-rtos/hal_espressif. Revert to the upstream
+      # url/revision once/if that work lands upstream.
+      url: https://github.com/mikeysklar/hal_espressif
+      revision: esp32s31-zephyr-integration
       path: modules/hal/espressif
       west-commands: west/west-commands.yml
       groups:
