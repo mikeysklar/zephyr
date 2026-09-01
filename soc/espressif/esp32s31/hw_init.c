@@ -15,7 +15,12 @@
 #include <hal/mmu_ll.h>
 #include <hal/apm_ll.h>
 
-#include <soc/pcr_reg.h>
+/* Unlike ESP32-C61 (which has soc/pcr_reg.h), ESP32-S31 names this
+ * register block HP_SYS_CLKRST instead of PCR. Nothing in this file
+ * references PCR_* macros directly (peripheral clock/reset is handled
+ * through soc_hw_init()/bootloader_clock_configure() instead), so this
+ * include was unused and is dropped rather than aliased.
+ */
 
 #include <bootloader_clock.h>
 #include <bootloader_flash.h>

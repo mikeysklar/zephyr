@@ -30,6 +30,26 @@
 		zephyr,flash-controller = &flash;
 	};
 
+	pinctrl: pin-controller {
+		compatible = "espressif,esp32-pinctrl";
+		status = "okay";
+	};
+
+	/* fast/slow-clk-src default to the internal RC oscillators (no
+	 * external 32kHz crystal assumed), same default as every other
+	 * Espressif Zephyr target. Values from esp32s31_clock.h, which are
+	 * this chip's own confirmed soc_rtc_fast_clk_src_t/
+	 * soc_rtc_slow_clk_src_t enums (ESP32-S31 has fewer source options
+	 * than e.g. ESP32-C61 -- see that header for specifics).
+	 */
+	clock: clock {
+		compatible = "espressif,esp32-clock";
+		fast-clk-src = <ESP32_RTC_FAST_CLK_SRC_RC_FAST>;
+		slow-clk-src = <ESP32_RTC_SLOW_CLK_SRC_RC_SLOW>;
+		#clock-cells = <1>;
+		status = "okay";
+	};
+
 	cpus {
 		#address-cells = <1>;
 		#size-cells = <0>;
