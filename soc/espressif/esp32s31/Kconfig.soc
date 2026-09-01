@@ -1,0 +1,37 @@
+# Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+
+config SOC_SERIES_ESP32S31
+	bool
+	select SOC_FAMILY_ESPRESSIF_ESP32
+
+config SOC_ESP32S31
+	bool
+	select SOC_SERIES_ESP32S31
+
+#
+# ESP32-S31 silicon revision selection.
+#
+# These are hidden symbols selected by a board's Kconfig.defconfig to
+# declare the minimum supported chip revision. The numeric revision value
+# (major * 100 + minor) is derived from these in the hal_espressif Kconfig,
+# which owns the revision-to-build plumbing.
+#
+# v0.0 is the only revision hal_espressif currently ships for this chip
+# (ESP32-S31 is still preview/pre-production silicon as of ESP-IDF v6.1),
+# so it is also the family floor.
+#
+config SOC_ESP32S31_REV_0_0
+	bool
+	depends on SOC_ESP32S31
+
+# ESP32-S31 also has an LP (low-power) RISC-V co-processor, similar to the
+# HP/LP core split on ESP32-C5/C6/P4. This initial port only brings up the
+# main (HP) core; a SOC_ESP32S31_HPCORE/LPCORE cpucluster split can be
+# introduced in soc.yml once LP-core support is added.
+
+config SOC_SERIES
+	default "esp32s31" if SOC_SERIES_ESP32S31
+
+config SOC
+	default "esp32s31" if SOC_ESP32S31
