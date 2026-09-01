@@ -295,11 +295,17 @@ void map_rom_segments(int core, struct rom_segments *map)
 #if CONFIG_SOC_SERIES_ESP32
 	/* Application will need to do Cache_Flush(1) and Cache_Read_Enable(1) */
 	Cache_Read_Enable(core);
-#elif defined(CONFIG_SOC_SERIES_ESP32P4)
+#elif defined(CONFIG_SOC_SERIES_ESP32P4) || defined(CONFIG_SOC_SERIES_ESP32S31)
 	/*
 	 * Invalidate L1+L2 cache for the IROM/DROM range before re-enabling.
 	 * Required after MMU remap because the ROM bootloader may have left
 	 * stale lines in L1 D-cache for these virtual addresses.
+	 *
+	 * ESP32-S31 is grouped with ESP32-P4 here (not the Cache_Set_IDROM_
+	 * MMU_Size() path below): its ROM (esp32s31/rom/cache.h) exports the
+	 * newer Cache_FLASH_MMU_Set()/cache_ll_invalidate_addr()-style API,
+	 * not the older Cache_Set_IDROM_MMU_Size() ROM function the other
+	 * series below still have.
 	 */
 	cache_ll_invalidate_addr(CACHE_LL_LEVEL_ALL, CACHE_TYPE_ALL, CACHE_LL_ID_ALL,
 				 app_drom_vaddr_align, map->drom_size);
@@ -311,7 +317,7 @@ void map_rom_segments(int core, struct rom_segments *map)
 #endif /* CONFIG_SOC_SERIES_ESP32 */
 
 #if !defined(CONFIG_SOC_SERIES_ESP32) && !defined(CONFIG_SOC_SERIES_ESP32S2) &&                    \
-	!defined(CONFIG_SOC_SERIES_ESP32P4)
+	!defined(CONFIG_SOC_SERIES_ESP32P4) && !defined(CONFIG_SOC_SERIES_ESP32S31)
 	/* Configure the Cache MMU size for instruction and rodata in flash. */
 	uint32_t cache_mmu_irom_size =
 		((map->irom_size + CONFIG_MMU_PAGE_SIZE - 1) / CONFIG_MMU_PAGE_SIZE) *
