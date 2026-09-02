@@ -1,0 +1,178 @@
+/*
+ * Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+#include <mem.h>
+#include <freq.h>
+#include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/interrupt-controller/esp-esp32s31-intmux.h>
+#include <zephyr/dt-bindings/clock/esp32s31_clock.h>
+#include <zephyr/dt-bindings/memory-attr/memory-attr-riscv.h>
+
+/*
+ * This initial devicetree only covers what's needed to elaborate the SoC
+ * init/linker files already added to this port (soc_rom / sramhp / ext_ram
+ * are referenced by memory.h and pmp_regions.c) plus the interrupt
+ * controller and systimer needed for the kernel tick. UART, GPIO, and
+ * other peripherals are intentionally left out: they need a pinctrl
+ * devicetree binding (mechanically derivable from hal_espressif's
+ * gpio_sig_map.h, not yet generated) and, for peripherals without a
+ * shared_periph_module_t entry, PCR (peripheral clock/reset) per-bit
+ * clock-gate assignments this port hasn't cross-checked yet.
+ */
+
+/ {
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	chosen {
+		zephyr,flash-controller = &flash;
+	};
+
+	pinctrl: pin-controller {
+		compatible = "espressif,esp32-pinctrl";
+		status = "okay";
+	};
+
+	/* fast/slow-clk-src default to the internal RC oscillators (no
+	 * external 32kHz crystal assumed), same default as every other
+	 * Espressif Zephyr target. Values from esp32s31_clock.h, which are
+	 * this chip's own confirmed soc_rtc_fast_clk_src_t/
+	 * soc_rtc_slow_clk_src_t enums (ESP32-S31 has fewer source options
+	 * than e.g. ESP32-C61 -- see that header for specifics).
+	 */
+	clock: clock {
+		compatible = "espressif,esp32-clock";
+		fast-clk-src = <ESP32_RTC_FAST_CLK_SRC_RC_FAST>;
+		slow-clk-src = <ESP32_RTC_SLOW_CLK_SRC_RC_SLOW>;
+		#clock-cells = <1>;
+		status = "okay";
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		/* ESP32-S31 is dual-core (plus an LP RISC-V co-processor); this
+		 * initial port only brings up the main core and has no SMP
+		 * support yet, so only cpu@0 is declared. hal_espressif's
+		 * soc.h documents interrupt number 24-28 as reserved for
+		 * riscv/vector_clic.S; the CLIC line count (48 total, 16
+		 * internal + 32 external) is confirmed by clic_reg.h's
+		 * CLIC_INT_INFO_NUM_INT reset value.
+		 *
+		 * riscv,isa-extensions and d-cache-line-size are carried over
+		 * from ESP32-C61 (same CLIC generation) as a starting point;
+		 * they have not been independently confirmed for ESP32-S31
+		 * and should be checked once ISA/cache HAL details are
+		 * cross-referenced.
+		 */
+		cpu0: cpu@0 {
+			device_type = "cpu";
+			compatible = "espressif,riscv", "riscv";
+			riscv,isa-base = "rv32i";
+			riscv,isa-extensions = "i", "m", "a", "c", "zicsr", "zifencei";
+			reg = <0>;
+			clock-source = <ESP32_CPU_CLK_SRC_CPLL>;
+			/* hal_espressif's soc_cpu_clk_src_t CPLL comment describes the
+			 * CPLL circuit as capable of up to 320MHz; esptool's own chip
+			 * database (confirmed against real ESP32-S31-Korvo-1 hardware)
+			 * reports a rated 300MHz. Using the confirmed-on-hardware
+			 * value here; the exact supported discrete CPU frequency set
+			 * (as validated by hal_espressif's rtc_clk_cpu_freq_mhz_to_config)
+			 * is not yet cross-checked.
+			 */
+			clock-frequency = <DT_FREQ_M(300)>;
+			xtal-freq = <DT_FREQ_M(40)>;
+			d-cache-line-size = <32>;
+		};
+	};
+
+	soc {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "simple-bus";
+		ranges;
+
+		/* ROM code region (libc and utility functions).
+		 * hal_espressif soc.h: SOC_IROM_MASK_LOW/HIGH = 0x2F800000 / 0x2F850000 (320KB).
+		 */
+		soc_rom: memory@2f800000 {
+			compatible = "zephyr,memory-region";
+			reg = <0x2f800000 DT_SIZE_K(320)>;
+			zephyr,memory-region = "SOC_ROM";
+		};
+
+		/* HP-SRAM, unified I/D address space.
+		 * hal_espressif soc.h: SOC_IRAM_LOW/HIGH == SOC_DRAM_LOW/HIGH
+		 * = 0x2F000000 / 0x2F080000 (512KB).
+		 */
+		sramhp: memory@2f000000 {
+			compatible = "zephyr,memory-region", "mmio-sram";
+			reg = <0x2f000000 DT_SIZE_K(512)>;
+			zephyr,memory-region = "SRAMHP";
+		};
+
+		/* PSRAM cache window.
+		 * hal_espressif soc.h: SOC_EXTRAM_LOW/HIGH = 0x50000000 / 0x54000000 (64MB).
+		 */
+		ext_ram: memory@50000000 {
+			compatible = "zephyr,memory-region";
+			reg = <0x50000000 DT_SIZE_M(64)>;
+			zephyr,memory-region = "EXTRAM";
+
+			psram0: psram0 {
+				compatible = "espressif,esp32-psram";
+				size = <0x0>;
+			};
+		};
+
+		/* Interrupt matrix / router, in front of each core's CLIC.
+		 * hal_espressif reg_base.h: DR_REG_INTERRUPT_MATRIX_BASE ==
+		 * DR_REG_INTERRUPT_CORE0_BASE == DR_REG_INTR0_BASE = 0x20585000
+		 * (core1's window is DR_REG_INTERRUPT_CORE1_BASE, +0x800, not
+		 * yet used since this port has no SMP support).
+		 */
+		intc: interrupt-controller@20585000 {
+			compatible = "espressif,esp32-intc";
+			#address-cells = <0>;
+			#interrupt-cells = <3>;
+			interrupt-controller;
+			reg = <0x20585000 DT_SIZE_K(4)>;
+			status = "okay";
+		};
+
+		/* hal_espressif reg_base.h: DR_REG_SYSTIMER_BASE = 0x20399000. */
+		systimer0: systimer@20399000 {
+			compatible = "espressif,esp32-systimer";
+			reg = <0x20399000 DT_SIZE_K(4)>;
+			interrupts = <SYSTIMER_TARGET0_INTR_SOURCE IRQ_DEFAULT_PRIORITY 0>;
+			interrupt-parent = <&intc>;
+			status = "okay";
+		};
+
+		/* Flash controller node: reg/ranges filled in by the flash
+		 * variant dtsi (see e.g. esp32s31_korvo_1 board devicetree,
+		 * once added) the same way ESP32-C61's wroom_n8[.r2].dtsi do.
+		 * hal_espressif reg_base.h: DR_REG_FLASH_SPI0_BASE = 0x20500000.
+		 */
+		flash: flash-controller@20500000 {
+			compatible = "espressif,esp32-flash-controller";
+			reg = <0x20500000 0x1000>;
+
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges;
+
+			flash0: flash@0 {
+				compatible = "soc-nv-flash";
+				erase-block-size = <4096>;
+				write-block-size = <4>;
+				#address-cells = <1>;
+				#size-cells = <1>;
+				/* reg and ranges are specified in SOC/SIP dtsi */
+			};
+		};
+	};
+};
