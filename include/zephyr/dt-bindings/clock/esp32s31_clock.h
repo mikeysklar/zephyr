@@ -16,12 +16,22 @@
  * chips: it has a 4th CPU clock source (PLL_F240M) that e.g. ESP32-C61
  * lacks, and only 2 RTC_SLOW_CLK / 2 RTC_FAST_CLK sources where C61 has
  * more (no OSC_SLOW/EXT_OSC slow source, no XTAL_D2 fast source on
- * ESP32-S31). Only the module IDs shared via the modem_clock-managed
- * shared_periph_module_t list are included here; the full PCR
- * (peripheral clock/reset) per-peripheral gating bit assignments
- * (needed for e.g. UART/I2C/SPI clock control) are not yet published
- * in a form this port has cross-checked, so those module IDs are left
- * out rather than guessed.
+ * ESP32-S31).
+ *
+ * Two module ID ranges: the shared/modem-clock-managed IDs below come
+ * straight from shared_periph_module_t in hal_espressif's esp32s31
+ * soc/periph_defs.h. The "non-shared" IDs (>= 100) are esp_hw_support/
+ * periph_ctrl.c's own dispatch values, not real PCR/HP_SYS_CLKRST
+ * register bit positions -- the actual clock-gate/reset register
+ * access for those happens inside each peripheral's own chip-specific
+ * xx_ll_enable_bus_clock() / xx_ll_reset_register() functions (e.g.
+ * esp_hal_ledc/esp32s31/include/hal/ledc_ll.h), which already exist
+ * for ESP32-S31 and were verified present before assigning IDs to
+ * them. Only the 5 periph_ctrl.c requires unconditionally (LEDC,
+ * UART0, I2C0, GDMA, PCNT) are defined so far; the rest of
+ * periph_ctrl.c's #if defined(...)-guarded cases are safely skipped
+ * when their module ID isn't defined, so more can be added later
+ * without needing all of them now.
  */
 
 #ifndef ZEPHYR_INCLUDE_DT_BINDINGS_CLOCK_ESP32S31_H_
@@ -75,5 +85,18 @@
 #define ESP32_MODEM_ADC_COMMON_FE_MODULE 12 /**< Modem ADC common front-end module */
 #define ESP32_PHY_CALIBRATION_MODULE   13 /**< PHY calibration module */
 #define ESP32_MODULE_MAX               14 /**< Number of shared modules */
+
+/* Non-shared peripherals - these have dedicated clock control in their
+ * drivers and don't use periph_module_enable(). Values start at 100,
+ * matching the convention every other Espressif target's clock.h uses
+ * (these are locally scoped per-chip header defines, not a global
+ * registry, so numeric collisions across chips are not possible --
+ * matching values are purely for readability).
+ */
+#define ESP32_LEDC_MODULE  100 /**< LEDC module */
+#define ESP32_UART0_MODULE 101 /**< UART0 module */
+#define ESP32_I2C0_MODULE  105 /**< I2C0 module */
+#define ESP32_GDMA_MODULE  110 /**< GDMA module */
+#define ESP32_PCNT_MODULE  107 /**< PCNT module */
 
 #endif /* ZEPHYR_INCLUDE_DT_BINDINGS_CLOCK_ESP32S31_H_ */
