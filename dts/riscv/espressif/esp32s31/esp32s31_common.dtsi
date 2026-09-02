@@ -62,17 +62,38 @@
 		 * internal + 32 external) is confirmed by clic_reg.h's
 		 * CLIC_INT_INFO_NUM_INT reset value.
 		 *
-		 * riscv,isa-extensions and d-cache-line-size are carried over
-		 * from ESP32-C61 (same CLIC generation) as a starting point;
-		 * they have not been independently confirmed for ESP32-S31
-		 * and should be checked once ISA/cache HAL details are
-		 * cross-referenced.
+		 * d-cache-line-size is carried over from ESP32-C61 (same CLIC
+		 * generation) as a starting point; it has not been
+		 * independently confirmed for ESP32-S31 and should be checked
+		 * once cache HAL details are cross-referenced.
+		 *
+		 * riscv,isa-extensions includes "f": confirmed via two
+		 * independent sources, not assumed. hal_espressif's real
+		 * esp32s31 soc_caps.h declares SOC_CPU_HAS_FPU=1 (single-
+		 * precision only -- no SOC_CPU_HAS_FPU_DOUBLE_PRECISION-style
+		 * macro, matching the "single-float ABI" flag on prebuilt
+		 * ESP32-S31 BT controller blobs from espressif/esp32s31-bt-lib,
+		 * whose object files were independently confirmed by
+		 * disassembly to execute real F-extension instructions
+		 * (fcvt.s.w, fmul.s, feq.s), not just carry an unused ABI tag.
+		 *
+		 * hal_espressif's soc_caps.h also documents a real errata,
+		 * SOC_CPU_HAS_FPU_EXT_ILL_BUG ("EXT_ILL CSR doesn't support
+		 * FLW/FSW"): the trap this chip would need for Zephyr's lazy/
+		 * shared FPU context-switching (CONFIG_FPU_SHARING) to detect
+		 * first FPU use doesn't fire for float load/store, only for
+		 * compute instructions. A thread's first FPU access via FLW
+		 * would silently miss the trap and could see another thread's
+		 * stale FPU register contents. Do not enable CONFIG_FPU_SHARING
+		 * for this chip without addressing that gap; CONFIG_FPU without
+		 * sharing (always save/restore FPU context on switch) has no
+		 * such issue since it never depends on catching first use.
 		 */
 		cpu0: cpu@0 {
 			device_type = "cpu";
 			compatible = "espressif,riscv", "riscv";
 			riscv,isa-base = "rv32i";
-			riscv,isa-extensions = "i", "m", "a", "c", "zicsr", "zifencei";
+			riscv,isa-extensions = "i", "m", "a", "f", "c", "zicsr", "zifencei";
 			reg = <0>;
 			clock-source = <ESP32_CPU_CLK_SRC_CPLL>;
 			/* hal_espressif's soc_cpu_clk_src_t CPLL comment describes the
