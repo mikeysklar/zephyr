@@ -45,7 +45,7 @@ int esp32_select_rtc_slow_clk(uint8_t slow_clk)
 			if (slow_clk == ESP32_RTC_SLOW_CLK_SRC_XTAL32K) {
 				rtc_clk_32k_enable(true);
 			}
-#if !defined(CONFIG_SOC_SERIES_ESP32P4)
+#if !defined(CONFIG_SOC_SERIES_ESP32P4) && !defined(CONFIG_SOC_SERIES_ESP32S31)
 			else if (slow_clk == ESP32_RTC_SLOW_CLK_32K_EXT_OSC) {
 				rtc_clk_32k_enable_external();
 			} else {
@@ -83,15 +83,20 @@ int esp32_select_rtc_slow_clk(uint8_t slow_clk)
 		/*
 		 * The source enums differ per SoC (ESP32-C5 has no RC32K,
 		 * ESP32-P4 has no OSC_SLOW), so each term is computed under the
-		 * SoC guard where its enum exists.
+		 * SoC guard where its enum exists. ESP32-S31's real
+		 * soc_rtc_slow_clk_src_t (clk_tree_defs.h) has neither: just
+		 * SOC_RTC_SLOW_CLK_SRC_RC_SLOW and _XTAL32K -- RC32K hardware
+		 * exists on this chip (SOC_CLK_RC32K_SUPPORTED=1) but isn't
+		 * exposed as an RTC_SLOW_CLK source option here.
 		 */
 		bool xpd_xtal32k = (rtc_slow_clk_src == ESP32_RTC_SLOW_CLK_SRC_XTAL32K);
 		bool xpd_rc32k = false;
 
-#if !defined(CONFIG_SOC_SERIES_ESP32P4)
+#if !defined(CONFIG_SOC_SERIES_ESP32P4) && !defined(CONFIG_SOC_SERIES_ESP32S31)
 		xpd_xtal32k |= (rtc_slow_clk_src == SOC_RTC_SLOW_CLK_SRC_OSC_SLOW);
 #endif
-#if !defined(CONFIG_SOC_SERIES_ESP32C5) && !defined(CONFIG_SOC_SERIES_ESP32C61)
+#if !defined(CONFIG_SOC_SERIES_ESP32C5) && !defined(CONFIG_SOC_SERIES_ESP32C61) && \
+	!defined(CONFIG_SOC_SERIES_ESP32S31)
 		xpd_rc32k = (rtc_slow_clk_src == SOC_RTC_SLOW_CLK_SRC_RC32K);
 #endif
 
@@ -165,10 +170,23 @@ static void esp32_cpu_clock_init(const struct esp32_cpu_clock_config *cpu_cfg)
 #endif
 	/* clang-format on */
 
+	/*
+	 * ESP32-S31's vendor register header renamed this whole block from
+	 * LP_CLKRST_* to LP_AONCLKRST_* (confirmed: the real FOSC/RC32K
+	 * DFREQ registers moved from a *_CNTL_REG name to a *_DFREQ_REG
+	 * name too, not just the prefix). SOC_CLK_RC32K_SUPPORTED is set
+	 * for this chip, so the RC32K line applies here same as it does
+	 * for every non-C5/C61 chip.
+	 */
+#if defined(CONFIG_SOC_SERIES_ESP32S31)
+	REG_SET_FIELD(LP_AONCLKRST_FOSC_DFREQ_REG, LP_AONCLKRST_FOSC_DFREQ, rtc_clk_cfg.clk_8m_dfreq);
+	REG_SET_FIELD(LP_AONCLKRST_RC32K_DFREQ_REG, LP_AONCLKRST_RC32K_DFREQ, rtc_clk_cfg.rc32k_dfreq);
+#else
 	REG_SET_FIELD(LP_CLKRST_FOSC_CNTL_REG, LP_CLKRST_FOSC_DFREQ, rtc_clk_cfg.clk_8m_dfreq);
 #if !defined(CONFIG_SOC_SERIES_ESP32C5) && !defined(CONFIG_SOC_SERIES_ESP32C61)
 	REG_SET_FIELD(LP_CLKRST_RC32K_CNTL_REG, LP_CLKRST_RC32K_DFREQ, rtc_clk_cfg.rc32k_dfreq);
 #endif
+#endif /* CONFIG_SOC_SERIES_ESP32S31 */
 
 	/*
 	 * When PVT is enabled, esp_rtc_init() -> pmu_init() already
@@ -177,8 +195,17 @@ static void esp32_cpu_clock_init(const struct esp32_cpu_clock_config *cpu_cfg)
 	 * the RO HP/LP DBIAS_VOL fields, causing pvt_func_enable(false)
 	 * at sleep entry to read stale values (0) and write an invalid
 	 * regulator bias which brown-outs the core.
+	 *
+	 * ESP32-S31 has real PVT hardware (soc/pvt_reg.h, pvt_struct.h
+	 * exist for it) but no pmu_pvt.c port and no pmu_param.c trim
+	 * table yet -- get_act_hp_dbias()/get_act_lp_dbias() come from
+	 * that missing table, and there's no measured factory calibration
+	 * data available to fabricate one. Skip this block for S31 so the
+	 * HP/LP regulators stay at their reset-default bias rather than
+	 * an invented value; this is a real gap to close once either a
+	 * pmu_pvt.c port or real trim data exists for this chip.
 	 */
-#if !defined(CONFIG_SOC_ESP32_ENABLE_PVT)
+#if !defined(CONFIG_SOC_ESP32_ENABLE_PVT) && !defined(CONFIG_SOC_SERIES_ESP32S31)
 	uint32_t hp_cali_dbias = get_act_hp_dbias();
 	uint32_t lp_cali_dbias = get_act_lp_dbias();
 
@@ -192,13 +219,23 @@ static void esp32_cpu_clock_init(const struct esp32_cpu_clock_config *cpu_cfg)
 			  hp_cali_dbias, PMU_HP_MODEM_HP_REGULATOR_DBIAS_S);
 	SET_PERI_REG_BITS(PMU_HP_SLEEP_LP_REGULATOR0_REG, PMU_HP_SLEEP_LP_REGULATOR_DBIAS,
 			  lp_cali_dbias, PMU_HP_SLEEP_LP_REGULATOR_DBIAS_S);
-#endif /* !CONFIG_SOC_ESP32_ENABLE_PVT */
+#endif /* !CONFIG_SOC_ESP32_ENABLE_PVT && !CONFIG_SOC_SERIES_ESP32S31 */
 
-#if !defined(CONFIG_SOC_SERIES_ESP32P4)
+	/*
+	 * clk_ll_rc_fast_tick_conf() writes a fosc_tick_num-style divider
+	 * field that, on every chip that has it, lives in a PCR/LP_CLKRST
+	 * "ctrl_32k_conf"-shaped register. No such field exists anywhere
+	 * in ESP32-S31's real vendor register headers under this or any
+	 * similar name (checked soc/pcr*, soc/lp_clkrst_reg.h/
+	 * lp_aonclkrst equivalents) -- skip rather than guess at an
+	 * unverified register address.
+	 */
+#if !defined(CONFIG_SOC_SERIES_ESP32P4) && !defined(CONFIG_SOC_SERIES_ESP32S31)
 	clk_ll_rc_fast_tick_conf();
 #endif
 	esp_rom_output_tx_wait_idle(0);
-#if !defined(CONFIG_SOC_SERIES_ESP32C5) && !defined(CONFIG_SOC_SERIES_ESP32C61)
+#if !defined(CONFIG_SOC_SERIES_ESP32C5) && !defined(CONFIG_SOC_SERIES_ESP32C61) && \
+	!defined(CONFIG_SOC_SERIES_ESP32S31)
 	rtc_clk_xtal_freq_update(rtc_clk_cfg.xtal_freq);
 #endif
 
