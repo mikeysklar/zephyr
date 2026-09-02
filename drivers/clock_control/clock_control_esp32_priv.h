@@ -94,6 +94,18 @@
 #include <soc/dport_access.h>
 #include <hal/clk_tree_ll.h>
 #include <esp_private/esp_pmu.h>
+#elif defined(CONFIG_SOC_SERIES_ESP32S31)
+#define DT_CPU_COMPAT espressif_riscv
+#include <zephyr/dt-bindings/clock/esp32s31_clock.h>
+#include <soc/lp_clkrst_reg.h>
+#include <soc/pmu_reg.h>
+#include <soc/regi2c_dig_reg.h>
+#include <regi2c_ctrl.h>
+#include <esp32s31/rom/rtc.h>
+#include <soc/dport_access.h>
+#include <hal/clk_tree_ll.h>
+#include <esp_private/esp_pmu.h>
+#include <modem/modem_lpcon_struct.h>
 #endif
 
 #include <zephyr/device.h>
