@@ -69,6 +69,7 @@
 #include <stdint.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include <time.h>
 #include <errno.h>
 #include "nsi_utils.h"
 #include "nct_if.h"
@@ -87,6 +88,8 @@
 
 #define NCT_ENABLE_CANCEL 1
 #define NCT_ALLOC_CHUNK_SIZE 64 /* In how big chunks we grow the thread table */
+/* How long nct_clean_up() waits, per thread, for a released thread to be gone */
+#define NCT_JOIN_TIMEOUT_MS 50
 #define NCT_REUSE_ABORTED_ENTRIES 0
 /* For the Zephyr OS, tests/kernel/threads/scheduling/schedule_api fails when setting
  * NCT_REUSE_ABORTED_ENTRIES => don't set it by now
@@ -140,6 +143,17 @@ static void nct_exit_this_thread(void)
 	pthread_exit(NULL);
 }
 
+/**
+ * Like nct_exit_this_thread(), but stay joinable so nct_clean_up() can wait
+ * until we are really gone (pthread_exit() still has to run this thread's TSD
+ * destructors, and host libraries the ON_EXIT tasks are about to tear down may
+ * have registered some).
+ */
+static void nct_exit_this_thread_joinable(void)
+{
+	pthread_exit(NULL);
+}
+
 /*
  * Wait for the semaphore, retrying if we are interrupted by a signal
  */
@@ -180,7 +194,7 @@ static void nct_wait_until_allowed(struct threads_table_el *tt_el, int this_th_n
 	NSI_SAFE_CALL(nct_sem_rewait(&tt_el->sema));
 
 	if (tt_el->nct_status->terminate) {
-		nct_exit_this_thread();
+		nct_exit_this_thread_joinable();
 	}
 
 	if (tt_el->state == ABORTING) {
@@ -524,6 +538,41 @@ void nct_clean_up(void *this_arg)
 			continue;
 		}
 		NSI_SAFE_CALL(sem_post(&tt_el->sema));
+	}
+
+	/*
+	 * And wait until they are really gone before returning: our caller is
+	 * about to run the ON_EXIT cleanup hooks, which tear down host
+	 * libraries (e.g. SDL destroying its window unloads the GL/EGL driver
+	 * with dlclose()). A thread which is still inside pthread_exit() is
+	 * running its TSD destructors, and those may belong to exactly those
+	 * libraries.
+	 *
+	 * This is best effort, and deliberately bounded: threads which are not
+	 * blocked on their semaphore (the one which called nsi_exit(), the one
+	 * blocked in nce_halt_cpu(), or any blocked in a host call) will never
+	 * get here, and, as this can be called from an assert or other error
+	 * termination, we must not hang.
+	 */
+	tt_el = this->threads_table;
+	for (int i = 0; i < this->threads_table_size; i++, tt_el = tt_el->next) {
+		struct timespec deadline;
+
+		if (tt_el->state != USED) {
+			continue;
+		}
+		if (pthread_equal(tt_el->thread, pthread_self())) {
+			continue;
+		}
+		if (clock_gettime(CLOCK_REALTIME, &deadline) != 0) {
+			break;
+		}
+		deadline.tv_nsec += NCT_JOIN_TIMEOUT_MS * 1000000L;
+		if (deadline.tv_nsec >= 1000000000L) {
+			deadline.tv_nsec -= 1000000000L;
+			deadline.tv_sec += 1;
+		}
+		(void)pthread_timedjoin_np(tt_el->thread, NULL, &deadline);
 	}
 #endif
 

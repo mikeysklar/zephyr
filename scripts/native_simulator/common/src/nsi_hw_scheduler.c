@@ -44,6 +44,19 @@ static void nsi_hws_signal_end_handler(int sig)
 }
 
 /**
+ * Are we terminating because we were asked to (SIGTERM/SIGINT)?
+ *
+ * Used to tell apart "the program is exiting" from "the program is exiting to
+ * reboot": a SIGTERM which arrives while a reboot is pending must win, or the
+ * reboot re-execs us and the signal is lost (and with a program which reboots
+ * in a loop, it can never be killed with a single SIGTERM).
+ */
+bool nsi_hws_terminating(void)
+{
+	return signaled_end != 0;
+}
+
+/**
  * Set the handler for SIGTERM and SIGINT which will cause the
  * program to exit gracefully when they are received the 1st time
  *

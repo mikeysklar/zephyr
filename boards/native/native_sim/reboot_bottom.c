@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
+#include <nsi_hw_scheduler.h>
 #include <nsi_main.h>
 #include <nsi_tasks.h>
 #include <nsi_tracing.h>
@@ -30,6 +31,18 @@ void maybe_reboot(void)
 	int argc;
 
 	if (!reboot_on_exit) {
+		return;
+	}
+
+	/*
+	 * A SIGTERM/SIGINT which lands between sys_reboot() arming the reboot
+	 * and us getting here must win: otherwise we execv() ourselves, the
+	 * signal is gone with the old process image, and a program which
+	 * reboots in a loop cannot be stopped with a single SIGTERM.
+	 */
+	if (nsi_hws_terminating()) {
+		nsi_print_warning("%s: Terminating instead of restarting the process.\n", module);
+		reboot_on_exit = false;
 		return;
 	}
 
