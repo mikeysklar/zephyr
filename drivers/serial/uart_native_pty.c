@@ -881,8 +881,14 @@ static void np_add_uart_options(void)
 	native_add_command_line_opts(uart_options);
 }
 
+/* Let the reader pick up whatever we wrote last: closing the master (or the
+ * implicit close of the O_CLOEXEC fd when sys_reboot() execv()s us) throws away
+ * anything it has not read yet.
+ */
 #define NATIVE_PTY_CLEANUP(inst)                                                                \
 	if ((!native_pty_status_##inst.on_stdinout) && (native_pty_status_##inst.in_fd != 0)) { \
+		np_uart_drain_bottom(native_pty_status_##inst.in_fd,                            \
+				     CONFIG_UART_NATIVE_PTY_DRAIN_TIMEOUT_MS);                  \
 		nsi_host_close(native_pty_status_##inst.in_fd);                                 \
 		native_pty_status_##inst.in_fd = 0;                                             \
 	}
