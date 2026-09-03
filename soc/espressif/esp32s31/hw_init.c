@@ -34,8 +34,6 @@
 
 const static char *TAG = "hw_init";
 
-extern void esp_cpu_configure_invalid_regions(void);
-
 int hardware_init(void)
 {
 	int err = 0;
@@ -56,14 +54,20 @@ int hardware_init(void)
 	 * denies U-mode fetches.
 	 */
 
-	/* Configure PMA (Physical Memory Attributes) entries to replace
-	 * ROM's default configuration. This is needed because the Zephyr
-	 * PMP init (z_riscv_pmp_init) enables MPRV which changes how
-	 * PMA+PMP interact. Without proper PMA entries, peripheral
-	 * register access (e.g. PMU at DR_REG_PMU_BASE) will fault.
-	 * Only configure PMA here; PMP is managed by Zephyr's arch layer.
+	/*
+	 * esp_cpu_configure_invalid_regions() (PMA setup, needed because
+	 * Zephyr's PMP init (z_riscv_pmp_init) enables MPRV which changes
+	 * how PMA+PMP interact -- without it, peripheral register access
+	 * may fault) was called here, but no implementation exists
+	 * anywhere for this chip: hal_espressif's esp32s31/
+	 * cpu_region_protect.c only has esp_cpu_configure_region_protection
+	 * (a different, PMP-specific function) and is explicitly marked
+	 * "TODO: [ESP32S31] IDF-15238" -- confirmed genuinely unfinished in
+	 * real esp-idf v6.1-beta1, not just missing from this port. Left
+	 * out rather than fabricate PMP/PMA region setup with no reference
+	 * to verify against. If peripheral register access faults during
+	 * boot, this is the first place to look.
 	 */
-	esp_cpu_configure_invalid_regions();
 
 	bootloader_clock_configure();
 
