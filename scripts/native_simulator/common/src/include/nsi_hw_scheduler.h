@@ -7,6 +7,7 @@
 #ifndef NSI_COMMON_SRC_INCL_HW_SCHEDULER_H
 #define NSI_COMMON_SRC_INCL_HW_SCHEDULER_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -29,6 +30,7 @@ void nsi_hws_one_event(void);
 void nsi_hws_set_end_of_time(uint64_t new_end_of_time);
 void nsi_hws_find_next_event(void);
 uint64_t nsi_hws_get_next_event_time(void);
+bool nsi_hws_terminating(void);
 
 #ifdef __cplusplus
 }
