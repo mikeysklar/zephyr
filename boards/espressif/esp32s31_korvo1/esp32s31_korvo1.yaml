@@ -1,0 +1,9 @@
+identifier: esp32s31_korvo1
+name: ESP32-S31-Korvo-1
+vendor: espressif
+type: mcu
+arch: riscv
+toolchain:
+  - zephyr
+supported:
+  - gpio
