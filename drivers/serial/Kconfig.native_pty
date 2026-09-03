@@ -76,4 +76,14 @@ config UART_NATIVE_PTY_RX_POLL_PERIOD_US
 	  usage but decrease latency. Note that the sleep always takes at least
 	  two ticks (CONFIG_SYS_CLOCK_TICKS_PER_SEC), regardless of this value.
 
+config UART_NATIVE_PTY_DRAIN_TIMEOUT_MS
+	int "How long to wait for the PTY reader at exit (ms)"
+	default 100
+	help
+	  When the program exits (including the exit+execv() a sys_reboot() does)
+	  the PTY master is closed, which discards whatever the reader on the
+	  slave side has not consumed yet. Wait up to this long for it to catch
+	  up so the last UART output before an exit or reboot is not lost.
+	  Set to 0 to disable waiting.
+
 endif # UART_NATIVE_PTY

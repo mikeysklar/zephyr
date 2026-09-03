@@ -20,6 +20,8 @@
 #include <pty.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <sys/ioctl.h>
+#include <time.h>
 #include <unistd.h>
 #include <nsi_tracing.h>
 
@@ -66,6 +68,56 @@ int np_uart_stdin_read_bottom(int in_f, unsigned char *p_char, int len)
 	} else {
 		return n;
 	}
+}
+
+/**
+ * @brief Wait until what we wrote to the PTY has been read by the other side
+ *
+ * Closing the PTY master (which also happens implicitly on the execv() a
+ * sys_reboot() does, as the fd is O_CLOEXEC) discards whatever the reader has
+ * not consumed yet, so the last thing the UART printed before an exit or a
+ * reboot is otherwise lost.
+ *
+ * What we wrote sits in the slave's input queue, which the master side cannot
+ * query (TIOCOUTQ on the master is about the master's own output queue, and is
+ * always 0 for a PTY). So open the slave just to ask it, with TIOCINQ, how much
+ * is still waiting to be read. Give the reader a bounded amount of time to pick
+ * it up; if nothing is attached (or it is not reading) we must not hang.
+ *
+ * @param fd     file number of the PTY master
+ * @param max_ms how long to wait at most, in milliseconds
+ */
+void np_uart_drain_bottom(int fd, int max_ms)
+{
+	char *slave_pty_name = ptsname(fd);
+	int slave_fd;
+
+	if (max_ms <= 0 || slave_pty_name == NULL) {
+		return;
+	}
+
+	/* O_NONBLOCK so this cannot block on a modem-control wait, and we only
+	 * ever ioctl() this fd, never read from it: the data has to stay in the
+	 * queue for the real reader.
+	 */
+	slave_fd = open(slave_pty_name, O_RDONLY | O_NOCTTY | O_NONBLOCK);
+	if (slave_fd == -1) {
+		return;
+	}
+
+	for (int waited_us = 0; waited_us < max_ms * 1000; waited_us += 200) {
+		int pending = 0;
+
+		if (ioctl(slave_fd, TIOCINQ, &pending) != 0) {
+			break;
+		}
+		if (pending == 0) {
+			break;
+		}
+		(void)nanosleep(&(struct timespec){ .tv_nsec = 200 * 1000 }, NULL);
+	}
+
+	(void)close(slave_fd);
 }
 
 /**
