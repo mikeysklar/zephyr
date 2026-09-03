@@ -1,0 +1,6 @@
+board:
+  name: esp32s31_korvo1
+  full_name: ESP32-S31-Korvo-1
+  vendor: espressif
+  socs:
+  - name: esp32s31
