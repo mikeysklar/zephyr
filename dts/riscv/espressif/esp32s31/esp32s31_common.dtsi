@@ -173,6 +173,57 @@
 			status = "okay";
 		};
 
+		/* GPIO controllers. hal_espressif reg_base.h:
+		 * DR_REG_GPIO_BASE = 0x20583000; soc_caps.h:
+		 * SOC_GPIO_PIN_COUNT = 62 (0..61), with pins 29 and 41
+		 * excluded from SOC_GPIO_VALID_GPIO_MASK (reserved for
+		 * internal use) -- reflected below as gpio-reserved-ranges,
+		 * bank-relative per the binding (pin 41 is index 9 within
+		 * gpio1's 32..61 range).
+		 *
+		 * Unlike chips with two genuinely separate GPIO register
+		 * blocks 0x800 apart (e.g. ESP32-S3, -P4), ESP32-S31's real
+		 * gpio_reg.h has GPIO_OUT1_REG at only GPIO_BASE + 0x10 --
+		 * one tightly-packed gpio_dev_t struct covering both pin
+		 * banks (confirmed the same on ESP32-C5, this chip's
+		 * closest architectural sibling with the same register
+		 * generation). drivers/gpio/gpio_esp32.c's
+		 * ESP_SOC_GPIO_INIT casts each instance's own
+		 * DT_REG_ADDR(gpio##_id) to gpio_dev_t* and accesses
+		 * ->out1/->out1_w1ts/etc as plain struct members (compiler-
+		 * computed offsets) -- so gpio1's reg must be the SAME base
+		 * address as gpio0, not base+0x800, for ->out1_w1ts to
+		 * resolve to the real GPIO_OUT1_W1TS_REG address. Both
+		 * nodes share the same core-0 GPIO interrupt source
+		 * (GPIO_INTR0_SOURCE); this chip has 4 total
+		 * (GPIO_INTR0..3_SOURCE, likely one pair per core), but
+		 * this port has no SMP support yet so only core 0's is
+		 * used.
+		 */
+		gpio0: gpio@20583000 {
+			compatible = "espressif,esp32-gpio";
+			gpio-controller;
+			#gpio-cells = <2>;
+			reg = <0x20583000 DT_SIZE_K(4)>;
+			interrupts = <GPIO_INTR0_SOURCE IRQ_DEFAULT_PRIORITY 0>;
+			interrupt-parent = <&intc>;
+			ngpios = <32>;
+			gpio-reserved-ranges = <29 1>;
+			status = "okay";
+		};
+
+		gpio1: gpio-bank1@20583000 {
+			compatible = "espressif,esp32-gpio";
+			gpio-controller;
+			#gpio-cells = <2>;
+			reg = <0x20583000 DT_SIZE_K(4)>;
+			interrupts = <GPIO_INTR0_SOURCE IRQ_DEFAULT_PRIORITY 0>;
+			interrupt-parent = <&intc>;
+			ngpios = <30>;
+			gpio-reserved-ranges = <9 1>;
+			status = "okay";
+		};
+
 		/* Flash controller node: reg/ranges filled in by the flash
 		 * variant dtsi (see e.g. esp32s31_korvo_1 board devicetree,
 		 * once added) the same way ESP32-C61's wroom_n8[.r2].dtsi do.
