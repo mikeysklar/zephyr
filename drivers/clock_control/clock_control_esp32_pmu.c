@@ -306,7 +306,15 @@ int esp32_cpu_clock_configure(const struct esp32_cpu_clock_config *cpu_cfg)
 		return -EINVAL;
 	}
 
-#if !defined(CONFIG_SOC_SERIES_ESP32P4)
+#if !defined(CONFIG_SOC_SERIES_ESP32P4) && !defined(CONFIG_SOC_SERIES_ESP32S31)
+	/*
+	 * rtc_clk_bbpll_add_consumer()/remove_consumer() don't exist
+	 * anywhere in real esp-idf's esp32s31 port -- like P4, this chip
+	 * doesn't need BBPLL consumer refcounting here (see the
+	 * bootloader_clock_configure() rewrite in hal_espressif: BBPLL is
+	 * a fixed, always-on PLL on this chip needing no software enable/
+	 * calibration at all).
+	 */
 	bool keep_pll = (cpu_cfg->clk_src == ESP32_CPU_CLK_SRC_XTAL);
 
 	if (keep_pll) {
@@ -351,7 +359,7 @@ int esp32_cpu_clock_configure(const struct esp32_cpu_clock_config *cpu_cfg)
 	}
 #endif
 
-#if !defined(CONFIG_SOC_SERIES_ESP32P4)
+#if !defined(CONFIG_SOC_SERIES_ESP32P4) && !defined(CONFIG_SOC_SERIES_ESP32S31)
 	if (keep_pll) {
 		rtc_clk_bbpll_remove_consumer();
 	}
