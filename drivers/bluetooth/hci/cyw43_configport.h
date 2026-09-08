@@ -87,16 +87,21 @@ void cyw43_delay_us(uint32_t us);
 #endif
 
 /*
- * cybt's corruption diagnostics call pico-sdk's panic(). Route it to the kernel
- * rather than pulling in the pico runtime, so the diagnostic survives and the
- * failure mode matches the rest of Zephyr.
+ * cybt's corruption diagnostics call pico-sdk's panic(). Log loudly but do NOT
+ * halt: cybt_toggle_bt_intr() panics whenever it reads the controller's
+ * HOST_CTRL register back with unexpected bits, and on this shared gSPI bus
+ * such a read really can be transiently corrupt (the same reason
+ * cybt_get_bt_buf_index() re-reads instead of asserting). Halting the kernel
+ * there takes USB down with it, which destroys the very log needed to diagnose
+ * the fault and leaves the board apparently bricked until a power cycle.
+ * The caller recomputes and rewrites the register immediately after, so
+ * continuing is no worse than the corrupt read already was.
  */
 #ifndef panic
 #define panic(...)                                                                                 \
 	do {                                                                                       \
-		printk("cyw43 BT: " __VA_ARGS__);                                                  \
+		printk("cyw43 BT (non-fatal): " __VA_ARGS__);                                      \
 		printk("\n");                                                                      \
-		k_panic();                                                                         \
 	} while (0)
 #endif
 

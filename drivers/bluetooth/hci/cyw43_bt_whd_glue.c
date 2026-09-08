@@ -184,6 +184,44 @@ static void bt_poll_start(void)
 	k_thread_name_set(&bt_poll_thread_data, "cyw43_bt_poll");
 }
 
+/* ----------------------------------------------------------- cybt handle */
+
+/*
+ * cybt stores this pointer (cybt_sharedbus_driver_init) and hands it straight
+ * back to the cyw43_ll_* backplane shims above, which ignore it entirely — so
+ * no real cyw43_ll_t is needed. It must still be NON-NULL: cybt_fw_download()
+ * rejects a NULL handle with CYBT_ERR_BADARG before doing anything. Point it at
+ * a dedicated word rather than burning 2108 bytes on an unused cyw43_ll_t.
+ * Nothing ever dereferences it.
+ */
+static uintptr_t cyw43_bt_ll_placeholder;
+#define CYW43_BT_LL_HANDLE ((cyw43_ll_t *)&cyw43_bt_ll_placeholder)
+
+/* ------------------------------------------------------- error translation */
+
+/*
+ * cybt reports failures as POSITIVE cybt_result_t values (CYBT_ERR_BADARG is
+ * 0xB1 and up), but everything above us — bt_hci_open(), bt_enable(), and
+ * CircuitPython's raise_zephyr_error() — expects a negative errno. Returning
+ * cybt's codes unchanged surfaces a meaningless positive number as the reason
+ * bt_enable() failed, so map them.
+ */
+static int cybt_to_errno(int ret)
+{
+	switch (ret) {
+	case CYBT_SUCCESS:
+		return 0;
+	case CYBT_ERR_BADARG:
+		return -EINVAL;
+	case CYBT_ERR_OUT_OF_MEMORY:
+		return -ENOMEM;
+	case CYBT_ERR_TIMEOUT:
+		return -ETIMEDOUT;
+	default:
+		return -EIO;
+	}
+}
+
 /* ------------------------------------------------ transport bring-up (lazy) */
 
 /*
@@ -215,11 +253,11 @@ static int cyw43_bt_ensure_up(void)
 	}
 
 	whd_bus_lock();
-	ret = cyw43_btbus_init(NULL);
+	ret = cyw43_btbus_init(CYW43_BT_LL_HANDLE);
 	whd_bus_unlock();
-	if (ret) {
-		LOG_ERR("cyw43_btbus_init (BT patchram download) failed: %d", ret);
-		return ret;
+	if (ret != CYBT_SUCCESS) {
+		LOG_ERR("cyw43_btbus_init (BT patchram download) failed: cybt %d", ret);
+		return cybt_to_errno(ret);
 	}
 
 	cyw43_bt_state.bt_loaded = true;
@@ -242,7 +280,7 @@ int cyw43_bluetooth_hci_read(uint8_t *buf, uint32_t max_size, uint32_t *len)
 	if (ret) {
 		return ret;
 	}
-	return cyw43_btbus_read(buf, max_size, len);
+	return cybt_to_errno(cyw43_btbus_read(buf, max_size, len));
 }
 
 int cyw43_bluetooth_hci_write(uint8_t *buf, size_t len)
@@ -252,5 +290,5 @@ int cyw43_bluetooth_hci_write(uint8_t *buf, size_t len)
 	if (ret) {
 		return ret;
 	}
-	return cyw43_btbus_write(buf, (uint32_t)len);
+	return cybt_to_errno(cyw43_btbus_write(buf, (uint32_t)len));
 }

@@ -259,6 +259,14 @@ config BT_AMEBA
 	help
 	  AMEBA BT HCI driver
 
+config BT_TX_PROCESSOR_STACK_SIZE
+	# bt_send() runs on the TX processor work queue, and the shared-bus
+	# transport's path is far deeper than the UART drivers the 1024 default is
+	# sized for: hci_cyw43_send -> cybt_hci_write -> WHD backplane transfer ->
+	# PIO-SPI. At the default the thread overflows on the very first HCI
+	# command (Read_BD_ADDR).
+	default 4096 if BT_CYW43_SHARED_BUS
+
 config BT_HCI_INIT_PRIORITY
 	int "BT HCI init priority"
 	default 75 if BT_AMBIQ_HCI
