@@ -67,3 +67,47 @@ if(CONFIG_BT_USERCHAN)
   zephyr_library_sources(userchan.c)
   target_sources(native_simulator INTERFACE userchan_bottom.c)
 endif()
+
+# CYW43 Bluetooth over the shared gSPI bus (Raspberry Pi Pico W / Pico 2 W).
+#
+# The transport itself is pico-sdk's cybt_shared_bus, which lives in
+# hal_rpi_pico and is written against the georgerobotics cyw43-driver headers;
+# cyw43_bt_whd_glue.c supplies the handful of primitives it needs, backed by the
+# AIROC/WHD WiFi bus. cyw43_configport.h configures cyw43-driver for BT only,
+# so none of its WiFi/SPI/lwIP code is compiled.
+if(CONFIG_BT_CYW43_SHARED_BUS)
+  set(cyw43_root ${ZEPHYR_HAL_RPI_PICO_MODULE_DIR}/lib/cyw43-driver)
+  set(cybt_root ${ZEPHYR_HAL_RPI_PICO_MODULE_DIR}/src/rp2_common/pico_cyw43_driver/cybt_shared_bus)
+
+  if(NOT EXISTS ${cyw43_root}/src/cyw43_btbus.h)
+    message(FATAL_ERROR
+      "CONFIG_BT_CYW43_SHARED_BUS needs the georgerobotics cyw43-driver "
+      "submodule of hal_rpi_pico, which is not checked out. Run:\n"
+      "  git -C ${ZEPHYR_HAL_RPI_PICO_MODULE_DIR} submodule update --init lib/cyw43-driver")
+  endif()
+
+  zephyr_library_sources(
+    hci_cyw43_shared_bus.c
+    cyw43_bt_whd_glue.c
+    ${cybt_root}/cybt_shared_bus.c
+    ${cybt_root}/cybt_shared_bus_driver.c
+  )
+
+  # This directory first, so cyw43_config.h picks up our cyw43_configport.h.
+  zephyr_library_include_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${cyw43_root}/src
+    ${cyw43_root}/firmware
+    ${cybt_root}
+  )
+
+  # WHD internals for the backplane accessors, plus airoc_wifi.h.
+  set(whd_root ${ZEPHYR_HAL_INFINEON_MODULE_DIR}/whd-expansion/WHD)
+  zephyr_library_include_directories(
+    ${whd_root}/COMPONENT_WIFI5/inc
+    ${whd_root}/COMPONENT_WIFI5/src/include
+    ${whd_root}/COMPONENT_WIFI5/src/bus_protocols
+    ${whd_root}/COMMON/inc
+    ${ZEPHYR_BASE}/drivers/wifi/infineon
+  )
+endif()

@@ -1,0 +1,36 @@
+# Copyright (c) 2025 Dave Rensberger
+# Copyright (c) 2026 Adafruit Industries
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+    Infineon CYW43 Bluetooth HCI over the shared gSPI bus.
+
+    On the Raspberry Pi Pico W / Pico 2 W the CYW43439's Bluetooth controller is
+    not reachable over a UART (see infineon,bt-hci-uart) — HCI/ACL is carried
+    over the same gSPI bus as WiFi. This node sits as a child of the
+    infineon,airoc-wifi node and drives the controller through the AIROC/WHD
+    driver's backplane accessors.
+
+    Example:
+
+      airoc-wifi@0 {
+        compatible = "infineon,airoc-wifi";
+        ...
+        cyw43_bt_hci: cyw43_bt_hci {
+          compatible = "infineon,cyw43-bt-hci";
+        };
+      };
+
+    and point the host at it:
+
+      chosen {
+        zephyr,bt-hci = &cyw43_bt_hci;
+      };
+
+    NOTE: requires the BT controller patchram from the georgerobotics
+    cyw43-driver submodule of hal_rpi_pico:
+      git -C modules/hal/rpi_pico submodule update --init lib/cyw43-driver
+
+compatible: "infineon,cyw43-bt-hci"
+
+include: bt-hci.yaml

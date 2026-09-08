@@ -15,6 +15,39 @@
 
 LOG_MODULE_DECLARE(infineon_airoc_wifi, CONFIG_WIFI_LOG_LEVEL);
 
+/*
+ * Shared gSPI bus lock.
+ *
+ * On the Pico W / Pico 2 W a single gSPI bus carries both WiFi (this WHD WLAN
+ * path) and Bluetooth (cybt_shared_bus, driven from
+ * drivers/bluetooth/hci/cyw43_bt_whd_glue.c). WHD has no bus mutex of its own;
+ * it relies on "only whd_thread touches the bus", which the BT path violates.
+ * Without serialization, concurrent WiFi+BT traffic corrupts transfers below
+ * the host lock: WiFi association fails and the BT ring indices read back out
+ * of range. So bracket every WLAN bus transfer with a lock the BT path also
+ * takes. The strong definition lives in cyw43_bt_whd_glue.c (recursive, with
+ * priority inheritance); the __weak no-ops here keep a build without
+ * CONFIG_BT_CYW43_SHARED_BUS linking unchanged.
+ */
+__weak void whd_bus_lock(void)
+{
+}
+__weak void whd_bus_unlock(void)
+{
+}
+
+/*
+ * The WL_HOST_WAKE OOB IRQ is shared: the CYW43439 raises it for BT
+ * controller->host data as well as for WLAN, and WHD only wakes its own
+ * whd_thread. This hook lets a BT transport be notified too. The shared-bus BT
+ * driver currently drains on a fixed-interval poll rather than off this IRQ, so
+ * the __weak no-op stands; it is kept as a stable seam for a future
+ * IRQ-driven RX path.
+ */
+__weak void whd_bt_notify_irq(void)
+{
+}
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -101,6 +134,12 @@ whd_result_t whd_bus_spi_transfer(whd_driver_t whd_driver, const uint8_t *tx, si
 	int ret;
 	whd_result_t whd_ret = WHD_SUCCESS;
 
+	/* Hold the shared gSPI bus lock across the whole transfer,
+	 * including the SPI_DATA_IRQ_SHARED pinctrl/IRQ toggle below, so a BT
+	 * backplane access can never interleave mid-transfer. Recursive: the BT
+	 * path holds it across a cybt sequence and re-enters here. */
+	whd_bus_lock();
+
 #if defined(SPI_DATA_IRQ_SHARED)
 	ret = whd_bus_spi_irq_enable(whd_driver, false);
 	if (ret) {
@@ -159,6 +198,7 @@ whd_result_t whd_bus_spi_transfer(whd_driver_t whd_driver, const uint8_t *tx, si
 	}
 #endif
 
+	whd_bus_unlock();
 	return whd_ret;
 }
 
@@ -186,6 +226,9 @@ void whd_bus_spi_oob_irq_handler(const struct device *port, struct gpio_callback
 
 	/* Call thread notify to wake up WHD thread */
 	whd_thread_notify_irq(data->whd_drv);
+
+	/* The host-wake is shared — give a BT transport a chance to wake too. */
+	whd_bt_notify_irq();
 
 #endif /* DT_INST_NODE_HAS_PROP(0, wifi-host-wake-gpios) */
 }

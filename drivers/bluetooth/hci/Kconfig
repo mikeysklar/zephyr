@@ -262,6 +262,10 @@ config BT_AMEBA
 config BT_HCI_INIT_PRIORITY
 	int "BT HCI init priority"
 	default 75 if BT_AMBIQ_HCI
+	# The CYW43 shared-bus HCI node is a devicetree child of the AIROC WiFi
+	# node and reaches the controller through it, so it must initialize after
+	# WIFI_INIT_PRIORITY (80) or Zephyr's init-priority validation fails.
+	default 81 if BT_CYW43_SHARED_BUS
 	default KERNEL_INIT_PRIORITY_DEVICE
 	help
 	  The priority of BT HCI driver initialization.
@@ -285,6 +289,26 @@ config BT_AIROC
 	  Infineon's AIROC™ Wi-Fi & combos portfolio integrates
 	  IEEE 802.11a/b/g/n/ac/ax Wi-Fi and Bluetooth® 5.2 in a single-chip
 	  solution to enable small-form-factor IoT designs.
+
+config BT_CYW43_SHARED_BUS
+	bool "CYW43 Bluetooth over the shared gSPI bus"
+	default y
+	depends on DT_HAS_INFINEON_CYW43_BT_HCI_ENABLED
+	depends on WIFI_AIROC
+	select BT_HCI_SETUP
+	help
+	  Bluetooth HCI transport for the Infineon CYW43439 on boards where the
+	  controller's HCI shares the WiFi gSPI bus rather than sitting on a
+	  UART — the Raspberry Pi Pico W and Pico 2 W. Runs pico-sdk's
+	  cybt_shared_bus transport over the AIROC/WHD WiFi driver's backplane,
+	  so it requires WIFI_AIROC and the georgerobotics cyw43-driver
+	  submodule of hal_rpi_pico for the controller patchram:
+
+	    git -C modules/hal/rpi_pico submodule update --init lib/cyw43-driver
+
+	  Note the patchram and cyw43-driver headers are licensed under
+	  LICENSE.RP, which permits use only in conjunction with Raspberry Pi
+	  silicon.
 source "drivers/bluetooth/hci/Kconfig.bflb"
 source "drivers/bluetooth/hci/Kconfig.esp32"
 source "drivers/bluetooth/hci/Kconfig.infineon"

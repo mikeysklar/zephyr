@@ -9,6 +9,7 @@
  * @brief AIROC Wi-Fi driver.
  */
 
+#include <zephyr/sys/atomic.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/conn_mgr/connectivity_wifi_mgmt.h>
 #include <airoc_wifi.h>
@@ -64,6 +65,22 @@ int airoc_wifi_init_primary(const struct device *dev, whd_interface_t *interface
 /* Allocate network pool */
 NET_BUF_POOL_FIXED_DEFINE(airoc_pool, AIROC_WIFI_PACKET_POOL_COUNT, AIROC_WIFI_PACKET_POOL_SIZE, 0,
 			  NULL);
+
+/*
+ * Coexistence buffer arbitration.
+ *
+ * airoc_pool is shared by WiFi RX/TX and, on boards where Bluetooth runs over
+ * this same WHD bus, by every BT backplane transfer
+ * (whd_bus_transfer_backplane_bytes). Under WiFi+BT bus contention the WHD
+ * SDPCM TX queue stalls and queued WiFi TX buffers accumulate until they
+ * consume the whole pool; the BT backplane allocation then fails and the BLE
+ * link drops. Track in-flight buffers so WiFi *data* TX can yield once the pool
+ * falls to a small reserve, leaving buffers for the BT backplane and for WiFi
+ * RX/control. A dropped TX is retransmitted by the net stack, so WiFi
+ * throughput dips rather than Bluetooth failing.
+ */
+static atomic_t airoc_pool_inflight;
+#define AIROC_POOL_BT_RESERVE 6
 
 /* AIROC globals */
 static uint16_t ap_event_handler_index = 0xFF;
@@ -391,6 +408,7 @@ static whd_result_t airoc_wifi_host_buffer_get(whd_buffer_t *buffer, whd_buffer_
 		net_buf_unref(buf);
 		return WHD_BUFFER_ALLOC_FAIL;
 	}
+	atomic_inc(&airoc_pool_inflight);
 	*buffer = buf;
 
 	/* Set buffer size */
@@ -402,6 +420,7 @@ static whd_result_t airoc_wifi_host_buffer_get(whd_buffer_t *buffer, whd_buffer_
 static void airoc_wifi_buffer_release(whd_buffer_t buffer, whd_buffer_dir_t direction)
 {
 	CY_UNUSED_PARAMETER(direction);
+	atomic_dec(&airoc_pool_inflight);
 	(void)net_buf_destroy((struct net_buf *)buffer);
 }
 
@@ -452,6 +471,19 @@ static int airoc_mgmt_send(const struct device *dev, struct net_pkt *pkt)
 	cy_rslt_t ret;
 	size_t pkt_len = net_pkt_get_len(pkt);
 	struct net_buf *buf = NULL;
+
+	/*
+	 * Keep a few pool buffers in reserve so a stalled WHD TX queue cannot
+	 * drain the shared pool and starve the BT backplane. Dropping this TX is
+	 * preferable: the net stack retransmits.
+	 */
+	if (atomic_get(&airoc_pool_inflight) >=
+	    (AIROC_WIFI_PACKET_POOL_COUNT - AIROC_POOL_BT_RESERVE)) {
+#if defined(CONFIG_NET_STATISTICS_WIFI)
+		data->stats.errors.tx++;
+#endif
+		return -ENOMEM;
+	}
 
 	/* Read the packet payload */
 	if (net_pkt_read(pkt, data->frame_buf, pkt_len) < 0) {
