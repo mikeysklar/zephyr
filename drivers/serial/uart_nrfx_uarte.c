@@ -3302,7 +3302,14 @@ static int uarte_instance_init(const struct device *dev,
 #ifdef CONFIG_DEVICE_DEINIT_SUPPORT
 static int uarte_instance_deinit(const struct device *dev)
 {
-	return pm_device_driver_deinit(dev, uarte_nrfx_pm_action);
+	if (IS_ENABLED(CONFIG_PM_DEVICE)) {
+		return pm_device_driver_deinit(dev, uarte_nrfx_pm_action);
+	}
+	/* Without CONFIG_PM_DEVICE, the PM action callback does not handle
+	 * PM_DEVICE_ACTION_SUSPEND (it returns -ENOTSUP), so suspend the
+	 * peripheral directly to keep device_deinit() working. Mirrors what
+	 * the i2c_nrfx_twim driver does in its deinit path. */
+	return uarte_pm_suspend(dev);
 }
 #endif
 
