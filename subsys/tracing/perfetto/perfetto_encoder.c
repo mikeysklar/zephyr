@@ -19,6 +19,9 @@
 #ifdef CONFIG_I2S_SDL
 #include "perfetto_i2s.h"
 #endif
+#ifdef CONFIG_DAC_TEST
+#include "perfetto_dac.h"
+#endif
 #include "proto/perfetto_trace.pb.h"
 
 /* Sequence flags */
@@ -877,6 +880,14 @@ bool perfetto_start(void)
 	/* Emit I2S group track under Emulated */
 	perfetto_emit_track_descriptor(I2S_GROUP_TRACK_UUID, EMULATED_TRACK_UUID, "I2S");
 	perfetto_i2s_init_tracks();
+#endif
+#ifdef CONFIG_DAC_TEST
+	/* Emit DAC group track under Emulated (fall back to the process when
+	 * there is no emulation support) */
+	perfetto_emit_track_descriptor(DAC_GROUP_TRACK_UUID,
+				       IS_ENABLED(CONFIG_EMUL) ? EMULATED_TRACK_UUID : PROCESS_UUID,
+				       "DAC");
+	perfetto_dac_init_tracks();
 #endif
 	return true;
 }

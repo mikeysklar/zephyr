@@ -26,6 +26,8 @@ extern "C" {
 #define UART_TRACK_UUID_BASE 0x2000ULL
 #define I2S_GROUP_TRACK_UUID 6ULL
 #define I2S_TRACK_UUID_BASE 0x3000ULL
+#define DAC_GROUP_TRACK_UUID 7ULL
+#define DAC_TRACK_UUID_BASE 0x4000ULL
 
 /* Counter units for Perfetto counter tracks. */
 typedef enum {
