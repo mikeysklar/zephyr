@@ -18,6 +18,10 @@ zephyr_library_sources_ifdef(CONFIG_I2S_SDL
   perfetto_i2s.c
 )
 
+zephyr_library_sources_ifdef(CONFIG_DAC_TEST
+  perfetto_dac.c
+)
+
 # Generate nanopb sources from proto file
 zephyr_nanopb_sources(zephyr proto/perfetto_trace.proto)
 

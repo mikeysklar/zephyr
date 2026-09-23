@@ -11,5 +11,13 @@ properties:
   "#io-channel-cells":
     const: 1
 
+  vref-mv:
+    type: int
+    default: 0
+    description: |
+      Reference voltage in millivolts. When set, DAC writes are recorded on
+      the perfetto counter tracks in millivolts (converted from the written
+      code through this reference). When 0, tracks record the raw code.
+
 io-channel-cells:
   - output
