@@ -76,6 +76,13 @@
 	status = "okay";
 };
 
+/* The OTG FS controller's kernel clock defaults to the HSI48 RC oscillator
+ * (USB_SEL(3)); without this the RCC driver refuses to select it and the USB
+ * device controller fails to initialize (usbd_init() -> -EIO). */
+&clk_hsi48 {
+	status = "okay";
+};
+
 &flash0 {
 	status = "okay";
 };
