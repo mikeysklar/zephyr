@@ -12,6 +12,8 @@
 
 #define DT_DRV_COMPAT zephyr_adc_emul
 
+#include <stdlib.h>
+
 #include <zephyr/drivers/adc.h>
 #include <zephyr/drivers/adc/adc_emul.h>
 #include <zephyr/kernel.h>
@@ -20,6 +22,44 @@
 #include <zephyr/sys/util.h>
 
 LOG_MODULE_REGISTER(adc_emul, CONFIG_ADC_LOG_LEVEL);
+
+#ifdef CONFIG_ARCH_POSIX
+#include "cmdline.h"
+#include "posix_native_task.h"
+
+/* The --adc-resolution runtime option narrows the emulated converter to fewer
+ * bits than its native 16, like --dac-resolution narrows the emulated DAC's
+ * writes: CircuitPython tests can read a sub-16-bit converter. Reads wider
+ * than the narrowed converter are rejected with -ENOTSUP, like real
+ * converters reject resolutions they cannot meet, so the caller discovers
+ * the narrowed resolution and stretches the code itself. 0: convert at the
+ * resolution each read requests. */
+static uint8_t adc_emul_narrow_resolution;
+
+static void cmd_adc_resolution(char *argv, int offset)
+{
+	adc_emul_narrow_resolution = (uint8_t)strtoul(argv + offset, NULL, 0);
+}
+
+static struct args_struct_t adc_emul_options[] = {
+	{
+		.option = "adc-resolution",
+		.name = "bits",
+		.type = 's',
+		.call_when_found = cmd_adc_resolution,
+		.descript = "Emulate an ADC converter of this many bits; reads "
+			    "wider than this are rejected (default: 16)"
+	},
+	ARG_TABLE_ENDMARKER,
+};
+
+static void adc_emul_register_options(void)
+{
+	native_add_command_line_opts(adc_emul_options);
+}
+
+NATIVE_TASK(adc_emul_register_options, PRE_BOOT_1, 1);
+#endif /* CONFIG_ARCH_POSIX */
 
 #define ADC_CONTEXT_USES_KERNEL_TIMER
 #include "adc_context.h"
@@ -395,6 +435,20 @@ static int adc_emul_start_read(const struct device *dev,
 		LOG_ERR("unsupported resolution %d", sequence->resolution);
 		return -ENOTSUP;
 	}
+
+#ifdef CONFIG_ARCH_POSIX
+	/* Without the --adc-resolution override this is a no-op (0 means no
+	 * narrowing); with it set, reject wider reads like real converters
+	 * reject resolutions they cannot meet, so the caller discovers the
+	 * narrowed resolution through failed reads. */
+	if (adc_emul_narrow_resolution != 0 &&
+	    sequence->resolution > adc_emul_narrow_resolution) {
+		LOG_ERR("requested resolution %d is wider than the narrowed "
+			"emulated converter %d",
+			sequence->resolution, adc_emul_narrow_resolution);
+		return -ENOTSUP;
+	}
+#endif
 
 	if (find_msb_set(sequence->channels) > config->num_channels) {
 		LOG_ERR("unsupported channels in mask: 0x%08x",
