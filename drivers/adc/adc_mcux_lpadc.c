@@ -290,8 +290,16 @@ static int mcux_lpadc_channel_setup(const struct device *dev,
 	 * ADC_REF_EXTERNAL1: Use SoC internal regulator as LPADC reference voltage.
 	 * ADC_REF_EXTERNAL0: Use other voltage source (maybe also within the SoCs)
 	 * as LPADC reference voltage, like VREFH, VDDA, etc.
+	 * ADC_REF_VDD_1: The analog supply (VDDA). Only honest when CFG[REFSEL]
+	 * muxes it ('voltage-ref': '2'); the conversion then needs no programming.
 	 */
-	if (channel_cfg->reference == ADC_REF_EXTERNAL1) {
+	if (channel_cfg->reference == ADC_REF_VDD_1) {
+		if (config->voltage_ref != kLPADC_ReferenceVoltageAlt3) {
+			LOG_ERR("CFG[REFSEL] does not mux VDDA as the reference");
+			return -EINVAL;
+		}
+		/* Nothing to program: the conversion uses the analog supply. */
+	} else if (channel_cfg->reference == ADC_REF_EXTERNAL1) {
 		LOG_DBG("ref external1");
 		if (regulator != NULL) {
 			err = regulator_set_voltage(regulator, vref_uv, vref_uv);
