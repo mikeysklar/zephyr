@@ -105,3 +105,7 @@ zephyr_library_sources_ifdef(CONFIG_ADC_VF610 adc_vf610.c)
 zephyr_library_sources_ifdef(CONFIG_ADC_XEC adc_mchp_xec.c)
 zephyr_library_sources_ifdef(CONFIG_ADC_XMC4XXX adc_xmc4xxx.c)
 # zephyr-keep-sorted-stop
+
+if(CONFIG_ADC_EMUL AND CONFIG_BOARD_NATIVE_SIM AND CONFIG_TRACING_PERFETTO)
+  zephyr_library_sources(adc_emul_trace.c)
+endif()
