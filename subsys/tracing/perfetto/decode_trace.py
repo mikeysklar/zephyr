@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """Decode a Perfetto trace file and print each packet."""
 
-import sys
 import os
+import sys
 
 # Add the build directory to find the generated protobuf module
-build_dir = os.path.join(os.path.dirname(__file__), '../../../../build/zephyr/subsys/tracing/perfetto/proto')
+build_dir = os.path.join(
+    os.path.dirname(__file__), '../../../../build/zephyr/subsys/tracing/perfetto/proto'
+)
 sys.path.insert(0, build_dir)
 
 # Also try the nanopb generator path for nanopb_pb2
-nanopb_gen = os.path.join(os.path.dirname(__file__), '../../../../build/zephyr/subsys/tracing/perfetto/nanopb/generator/proto')
+nanopb_gen = os.path.join(
+    os.path.dirname(__file__),
+    '../../../../build/zephyr/subsys/tracing/perfetto/nanopb/generator/proto',
+)
 sys.path.insert(0, nanopb_gen)
 
 try:
@@ -17,9 +22,13 @@ try:
 except ImportError:
     print("Could not import perfetto_trace_pb2. Trying to generate it...")
     import subprocess
+
     proto_file = os.path.join(os.path.dirname(__file__), 'proto/perfetto_trace.proto')
     out_dir = os.path.dirname(__file__)
-    subprocess.run(['protoc', f'--python_out={out_dir}', f'-I{os.path.dirname(proto_file)}', proto_file], check=True)
+    subprocess.run(
+        ['protoc', f'--python_out={out_dir}', f'-I{os.path.dirname(proto_file)}', proto_file],
+        check=True,
+    )
     import perfetto_trace_pb2 as perfetto
 
 
@@ -29,7 +38,7 @@ def decode_varint(data, pos):
     shift = 0
     while pos < len(data):
         byte = data[pos]
-        result |= (byte & 0x7f) << shift
+        result |= (byte & 0x7F) << shift
         pos += 1
         if not (byte & 0x80):
             break
@@ -78,7 +87,7 @@ def print_packet(i, packet):
 
     if packet.HasField('track_descriptor'):
         td = packet.track_descriptor
-        print(f"  track_descriptor:")
+        print("  track_descriptor:")
         print(f"    uuid: {td.uuid}")
         if td.HasField('parent_uuid'):
             print(f"    parent_uuid: {td.parent_uuid}")
@@ -87,12 +96,21 @@ def print_packet(i, packet):
         if td.HasField('process'):
             print(f"    process: pid={td.process.pid}, name='{td.process.process_name}'")
         if td.HasField('thread'):
-            print(f"    thread: pid={td.thread.pid}, tid={td.thread.tid}, name='{td.thread.thread_name}'")
+            print(
+                f"    thread: pid={td.thread.pid}, tid={td.thread.tid}, "
+                f"name='{td.thread.thread_name}'"
+            )
 
     if packet.HasField('track_event'):
         te = packet.track_event
-        print(f"  track_event:")
-        type_names = {0: "UNSPECIFIED", 1: "SLICE_BEGIN", 2: "SLICE_END", 3: "INSTANT", 4: "COUNTER"}
+        print("  track_event:")
+        type_names = {
+            0: "UNSPECIFIED",
+            1: "SLICE_BEGIN",
+            2: "SLICE_END",
+            3: "INSTANT",
+            4: "COUNTER",
+        }
         print(f"    type: {type_names.get(te.type, te.type)}")
         if te.HasField('track_uuid'):
             print(f"    track_uuid: {te.track_uuid}")
@@ -103,7 +121,7 @@ def print_packet(i, packet):
 
     if packet.HasField('interned_data'):
         id = packet.interned_data
-        print(f"  interned_data:")
+        print("  interned_data:")
         for en in id.event_names:
             print(f"    event_name: iid={en.iid}, name='{en.name}'")
         for ec in id.event_categories:
@@ -111,10 +129,13 @@ def print_packet(i, packet):
 
     # Show all fields using ListFields() for debugging
     all_fields = packet.ListFields()
-    known_field_nums = {8, 10, 13, 11, 60, 12}  # timestamp, seq_id, flags, track_event, track_descriptor, interned_data
+    # timestamp, seq_id, flags, track_event, track_descriptor, interned_data
+    known_field_nums = {8, 10, 13, 11, 60, 12}
     for field_desc, value in all_fields:
         if field_desc.number not in known_field_nums:
-            print(f"  [unhandled field {field_desc.number} '{field_desc.name}': {repr(value)[:100]}]")
+            print(
+                f"  [unhandled field {field_desc.number} '{field_desc.name}': {repr(value)[:100]}]"
+            )
 
     # Decode raw field numbers from the packet data
     pos = 0
@@ -126,12 +147,13 @@ def print_packet(i, packet):
         field_numbers.append(field_num)
         try:
             pos = skip_field(raw_data, new_pos, wire_type)
-        except:
+        except ValueError:
             break
 
     unknown_fields = [f for f in field_numbers if f not in known_field_nums]
     if unknown_fields:
         print(f"  [contains fields not in our proto: {sorted(set(unknown_fields))}]")
+
 
 def main():
     if len(sys.argv) < 2:
@@ -153,9 +175,9 @@ def main():
     packets = list(trace.packet)
     print(f"\nParsed {len(packets)} packets")
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Total packets: {len(packets)}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     for i, packet in enumerate(packets):
         print_packet(i, packet)
