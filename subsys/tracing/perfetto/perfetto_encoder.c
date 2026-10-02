@@ -640,7 +640,7 @@ void perfetto_encoder_init(void)
 	(void)perfetto_intern_category("thread");
 	(void)perfetto_intern_category("isr");
 	(void)perfetto_intern_category("sync");
-#ifdef CONFIG_PERFETTO_GPIO_TRACING
+#ifdef CONFIG_TRACING_GPIO
 	(void)perfetto_intern_category("gpio");
 #endif
 
