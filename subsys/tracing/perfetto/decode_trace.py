@@ -157,7 +157,9 @@ def print_packet(i, packet):
 
 def main():
     if len(sys.argv) < 2:
-        trace_file = "/home/tannewt/repos/circuitpython/ports/zephyr-cp/zephyr/build/channel0_0"
+        trace_file = os.path.expanduser(
+            "~/repos/circuitpython/ports/zephyr-cp/zephyr/build/channel0_0"
+        )
     else:
         trace_file = sys.argv[1]
 
