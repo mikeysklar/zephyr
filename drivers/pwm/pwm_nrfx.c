@@ -383,6 +383,32 @@ static int pwm_nrfx_pm_action(const struct device *dev,
 	return 0;
 }
 
+static int pwm_nrfx_deinit(const struct device *dev)
+{
+	struct pwm_nrfx_data *data = dev->data;
+	bool active = true;
+
+#ifdef CONFIG_PM_DEVICE
+	enum pm_device_state state;
+
+	/* A suspended instance is already stopped with its pins in the sleep state. */
+	(void)pm_device_state_get(dev, &state);
+	active = (state == PM_DEVICE_STATE_ACTIVE);
+#endif
+
+	if (active) {
+		int ret = pwm_suspend(dev);
+
+		if (ret < 0) {
+			return ret;
+		}
+	}
+
+	nrfx_pwm_uninit(&data->pwm);
+
+	return 0;
+}
+
 static int pwm_nrfx_init(const struct device *dev)
 {
 	const struct pwm_nrfx_config *config = dev->config;
@@ -455,7 +481,7 @@ static int pwm_nrfx_init(const struct device *dev)
 	};									     \
 	PM_DEVICE_DT_INST_DEFINE(inst, pwm_nrfx_pm_action);			     \
 	DEVICE_DT_INST_DEINIT_DEFINE(inst,					     \
-				     pwm_nrfx_init##inst, NULL,			     \
+				     pwm_nrfx_init##inst, pwm_nrfx_deinit,	     \
 				     PM_DEVICE_DT_INST_GET(inst),		     \
 				     &pwm_nrfx_##inst##_data,			     \
 				     &pwm_nrfx_##inst##_config,			     \
