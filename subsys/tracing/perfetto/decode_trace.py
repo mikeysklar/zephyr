@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Scott Shawcroft for Adafruit Industries
+# SPDX-License-Identifier: Apache-2.0
 """Decode a Perfetto trace file and print each packet."""
 
 import os
@@ -40,7 +42,7 @@ def decode_varint(data, pos):
         byte = data[pos]
         result |= (byte & 0x7F) << shift
         pos += 1
-        if not (byte & 0x80):
+        if not byte & 0x80:
             break
         shift += 7
     return result, pos
