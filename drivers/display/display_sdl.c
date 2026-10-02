@@ -216,25 +216,7 @@ static int sdl_display_init(const struct device *dev)
 			PIXEL_FORMAT_L_8 |
 			PIXEL_FORMAT_AL_88 |
 			PIXEL_FORMAT_I_4;
-		disp_data->current_pixel_format =
-#if defined(CONFIG_SDL_DISPLAY_DEFAULT_PIXEL_FORMAT_RGB_888)
-			PIXEL_FORMAT_RGB_888
-#elif defined(CONFIG_SDL_DISPLAY_DEFAULT_PIXEL_FORMAT_MONO01)
-			PIXEL_FORMAT_MONO01
-#elif defined(CONFIG_SDL_DISPLAY_DEFAULT_PIXEL_FORMAT_MONO10)
-			PIXEL_FORMAT_MONO10
-#elif defined(CONFIG_SDL_DISPLAY_DEFAULT_PIXEL_FORMAT_RGB_565)
-			PIXEL_FORMAT_RGB_565
-#elif defined(CONFIG_SDL_DISPLAY_DEFAULT_PIXEL_FORMAT_RGB_565X)
-			PIXEL_FORMAT_RGB_565X
-#elif defined(CONFIG_SDL_DISPLAY_DEFAULT_PIXEL_FORMAT_L_8)
-			PIXEL_FORMAT_L_8
-#elif defined(CONFIG_SDL_DISPLAY_DEFAULT_PIXEL_FORMAT_AL_88)
-			PIXEL_FORMAT_AL_88
-#else
-			PIXEL_FORMAT_ARGB_8888
-#endif
-			;
+		/* current_pixel_format keeps its initial value from devicetree. */
 	}
 
 	disp_data->screen_info =
