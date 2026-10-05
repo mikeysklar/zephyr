@@ -15,6 +15,7 @@
 LOG_MODULE_REGISTER(spi_emul_ctlr);
 
 #include <zephyr/device.h>
+#include <zephyr/kernel.h>
 #include <zephyr/drivers/emul.h>
 #include <zephyr/drivers/spi.h>
 #include "spi_rtio.h"
@@ -26,6 +27,13 @@ struct spi_emul_data {
 	sys_slist_t emuls;
 	/* SPI host configuration */
 	uint32_t config;
+#ifdef CONFIG_SPI_ASYNC
+	/* Completion of the async transfer in flight */
+	const struct device *dev;
+	struct k_work_delayable done;
+	spi_callback_t cb;
+	void *userdata;
+#endif
 };
 
 uint32_t spi_emul_get_config(const struct device *dev)
@@ -90,6 +98,66 @@ static int spi_emul_io(const struct device *dev, const struct spi_config *config
 	return api->io(emul->target, config, tx_bufs, rx_bufs);
 }
 
+#ifdef CONFIG_SPI_ASYNC
+static void spi_emul_done(struct k_work *work)
+{
+	struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+	struct spi_emul_data *data = CONTAINER_OF(dwork, struct spi_emul_data, done);
+
+	if (data->cb != NULL) {
+		data->cb(data->dev, 0, data->userdata);
+	}
+}
+
+static size_t spi_emul_buf_set_len(const struct spi_buf_set *bufs)
+{
+	size_t len = 0;
+
+	if (bufs != NULL) {
+		for (size_t i = 0; i < bufs->count; i++) {
+			len += bufs->buffers[i].len;
+		}
+	}
+
+	return len;
+}
+
+/**
+ * The data moves at once, as with the blocking call, but the completion callback runs later,
+ * after the time the bytes would take on the wire, so that callers see an asynchronous transfer.
+ */
+static int spi_emul_transceive_async(const struct device *dev, const struct spi_config *config,
+				     const struct spi_buf_set *tx_bufs,
+				     const struct spi_buf_set *rx_bufs, spi_callback_t cb,
+				     void *userdata)
+{
+	struct spi_emul_data *data = dev->data;
+	int ret;
+
+	if (k_work_delayable_is_pending(&data->done)) {
+		return -EBUSY;
+	}
+
+	ret = spi_emul_io(dev, config, tx_bufs, rx_bufs);
+	if (ret != 0) {
+		return ret;
+	}
+
+	size_t len = MAX(spi_emul_buf_set_len(tx_bufs), spi_emul_buf_set_len(rx_bufs));
+	k_timeout_t delay = K_NO_WAIT;
+
+	if (config->frequency != 0) {
+		delay = K_USEC((uint64_t)len * 8 * USEC_PER_SEC / config->frequency);
+	}
+
+	data->cb = cb;
+	data->userdata = userdata;
+	k_work_schedule(&data->done, delay);
+
+	return 0;
+}
+#endif /* CONFIG_SPI_ASYNC */
+
 /**
  * @brief This is a no-op stub of the SPI API's `release` method to protect drivers under test
  *        from hitting a segmentation fault when using SPI_LOCK_ON plus spi_release()
@@ -112,6 +180,10 @@ static int spi_emul_init(const struct device *dev)
 	struct spi_emul_data *data = dev->data;
 
 	sys_slist_init(&data->emuls);
+#ifdef CONFIG_SPI_ASYNC
+	data->dev = dev;
+	k_work_init_delayable(&data->done, spi_emul_done);
+#endif
 
 	return emul_init_for_bus(dev);
 }
@@ -132,6 +204,9 @@ int spi_emul_register(const struct device *dev, struct spi_emul *emul)
 
 static DEVICE_API(spi, spi_emul_api) = {
 	.transceive = spi_emul_io,
+#ifdef CONFIG_SPI_ASYNC
+	.transceive_async = spi_emul_transceive_async,
+#endif
 #ifdef CONFIG_SPI_RTIO
 	.iodev_submit = spi_rtio_iodev_default_submit,
 #endif
