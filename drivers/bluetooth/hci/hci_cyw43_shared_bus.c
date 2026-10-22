@@ -303,7 +303,8 @@ static int hci_cyw43_send(const struct device *dev, struct net_buf *buf)
 	}
 
 	memcpy(&cyw43_txbuf[CYW43_PACKET_HEADER_SIZE - 1], buf->data, buf->len);
-	cyw43_len = buf->len + CYW43_PACKET_HEADER_SIZE;
+	/* buf already contains H:4, which occupies the last header byte. */
+	cyw43_len = buf->len + (CYW43_PACKET_HEADER_SIZE - 1);
 
 	/*
 	 * TX runs on the host's bt_tx_processor thread, so it must take the
