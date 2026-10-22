@@ -39,7 +39,7 @@ LOG_MODULE_REGISTER(bt_hci_cyw43);
 
 /*
  * Bound on packets drained from the bt2host ring per process() call. Caps how
- * long the bus lock is held; any remainder is taken on the next poll.
+ * much work one poll performs; any remainder is taken on the next poll.
  */
 #define CYW43_BT_DRAIN_MAX 32
 
@@ -113,7 +113,13 @@ static void hci_cyw43_process_one(void)
 	 * On a failed read *len is not meaningful, so do not parse whatever the
 	 * buffer happens to still hold.
 	 */
+	/* Only the poll thread owns cyw43_rxbuf. Protect the controller ring
+	 * transaction, then release the bus before waiting for a host buffer or
+	 * delivering it. A buffer consumer can itself need this shared bus.
+	 */
+	whd_bus_lock();
 	ret = cyw43_bluetooth_hci_read(&cyw43_rxbuf[0], MAX_BT_MSG_SIZE, &cyw43_len);
+	whd_bus_unlock();
 	if (ret) {
 		LOG_ERR("cyw43_bluetooth_hci_read failed (ret %d)", ret);
 		return;
@@ -235,14 +241,15 @@ static void hci_cyw43_process_one(void)
 bool cyw43_bluetooth_has_pending(void)
 {
 	cybt_fw_membuf_index_t idx;
+	int ret;
 
 	if (!cyw43_bt_state.bt_loaded) {
 		return false;
 	}
-	if (cybt_get_bt_buf_index(&idx) != CYBT_SUCCESS) {
-		return false;
-	}
-	return idx.bt2host_in_val != idx.bt2host_out_val;
+	whd_bus_lock();
+	ret = cybt_get_bt_buf_index(&idx);
+	whd_bus_unlock();
+	return ret == CYBT_SUCCESS && idx.bt2host_in_val != idx.bt2host_out_val;
 }
 
 /*
@@ -251,8 +258,8 @@ bool cyw43_bluetooth_has_pending(void)
  * If the controller batched several HCI packets (say a connection event plus
  * the command-complete the host is blocked on in bt_hci_cmd_send_sync), reading
  * only one strands the rest until the next assertion, which surfaces as a
- * command timeout. Bounded so a controller streaming without pause cannot hold
- * the bus lock indefinitely.
+ * command timeout. Bound the work per poll so a controller streaming without
+ * pause still yields to other threads. Each ring transaction locks separately.
  */
 void cyw43_bluetooth_hci_process(void)
 {

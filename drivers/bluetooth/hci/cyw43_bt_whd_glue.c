@@ -204,11 +204,12 @@ static void bt_poll_thread(void *a, void *b, void *c)
 	ARG_UNUSED(c);
 
 	for (;;) {
-		whd_bus_lock();
+		/* Ring access takes the bus lock internally. Host buffer allocation
+		 * and delivery must run unlocked so their consumers can use the bus.
+		 */
 		if (cyw43_bluetooth_has_pending()) {
 			cyw43_bluetooth_hci_process();
 		}
-		whd_bus_unlock();
 		k_msleep(BT_POLL_INTERVAL_MS);
 	}
 }
