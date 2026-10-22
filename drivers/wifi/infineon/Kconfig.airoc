@@ -37,6 +37,24 @@ config AIROC_WIFI_BUS_SPI
 config AIROC_WIFI6
 	bool
 
+config AIROC_WIFI_TX_PACKET_POOL_COUNT
+	int "Transmit packet pool buffers"
+	default 10
+	range 4 64
+	help
+	  Transmit contribution to the shared WHD packet pool. Reducing this
+	  saves 2400 bytes per buffer, at the cost of burst throughput. The
+	  combined RX/TX pool must retain more than six buffers for shared-bus
+	  Bluetooth coexistence arbitration.
+
+config AIROC_WIFI_RX_PACKET_POOL_COUNT
+	int "Receive packet pool buffers"
+	default 10
+	range 4 64
+	help
+	  Receive contribution to the shared WHD packet pool. The buffers are
+	  shared by receive, transmit, control and Bluetooth bus transfers.
+
 config AIROC_WIFI_EVENT_TASK_STACK_SIZE
 	int "Event Task Stack Size"
 	default 4096
