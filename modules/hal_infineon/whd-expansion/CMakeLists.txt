@@ -327,6 +327,27 @@ if(CONFIG_CYW955573M2IPA1_SM AND NOT CONFIG_AIROC_WIFI_CUSTOM)
   set(NVRAM_IMAGE_NAME ${hal_wifi_dir_resources}/nvram/COMPONENT_55572/COMPONENT_CYW955573M2IPA1/cyw955573m2ipa1_rev1.01.txt)
 endif()
 
+# Pico SDK's shared-bus Bluetooth transport requires its combo WLAN image.
+# The generic Murata WLAN blob accepts commands but stops responding after
+# Bluetooth startup on Pico W. Use the matching WLAN/CLM pair already supplied
+# by hal_rpi_pico; retain explicit AIROC custom-resource overrides.
+if(CONFIG_BT_CYW43_SHARED_BUS AND NOT CONFIG_AIROC_WIFI_CUSTOM)
+  set(cyw43_combo_header
+    ${ZEPHYR_HAL_RPI_PICO_MODULE_DIR}/lib/cyw43-driver/firmware/wb43439A0_7_95_49_00_combined.h)
+  set(cyw43_extractor ${CMAKE_CURRENT_LIST_DIR}/extract_cyw43_firmware.py)
+  set(cyw43_resource_dir ${PROJECT_BINARY_DIR}/cyw43-whd-firmware)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    ${cyw43_combo_header} ${cyw43_extractor})
+  execute_process(
+    COMMAND ${PYTHON_EXECUTABLE} ${cyw43_extractor}
+      --input ${cyw43_combo_header}
+      --output-directory ${cyw43_resource_dir}
+    COMMAND_ERROR_IS_FATAL ANY
+  )
+  set(FW_IMAGE_NAME ${cyw43_resource_dir}/firmware.bin)
+  set(CLM_IMAGE_NAME ${cyw43_resource_dir}/clm.blob)
+endif()
+
 # set fw size
 file(SIZE ${FW_IMAGE_NAME} FW_IMAGE_SIZE)
 zephyr_compile_definitions(FW_IMAGE_NAME="${FW_IMAGE_NAME}")
