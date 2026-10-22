@@ -41,6 +41,7 @@
 #include "whd_wifi_api.h"
 #include "whd_bus_protocol_interface.h"
 #include "whd_bus_common.h"
+#include "whd_chip.h"
 #include "airoc_wifi.h"
 
 #include "cyw43_bt_whd_glue.h"
@@ -102,18 +103,42 @@ static inline whd_driver_t bt_whd_driver(void)
 
 /* ------------------------------------------------ backplane shims over WHD */
 
+/* WHD's raw backplane helpers assume the HT clock is already available.
+ * Bluetooth runs outside the WHD WLAN thread, including while that thread
+ * sleeps the bus. Keep wake + access atomic with WLAN power transitions. */
+static whd_result_t bt_backplane_begin(whd_driver_t *driver)
+{
+	whd_result_t result;
+	whd_bus_lock();
+	*driver = bt_whd_driver();
+	result = *driver ? whd_ensure_wlan_bus_is_up(*driver) : WHD_BADARG;
+	if (result != WHD_SUCCESS) {
+		whd_bus_unlock();
+	}
+	return result;
+}
+
 void cyw43_ll_write_backplane_reg(cyw43_ll_t *self_in, uint32_t addr, uint32_t val)
 {
+	whd_driver_t driver;
 	ARG_UNUSED(self_in);
-	whd_bus_write_backplane_value(bt_whd_driver(), addr, 4, val);
+	if (bt_backplane_begin(&driver) != WHD_SUCCESS) {
+		return;
+	}
+	whd_bus_write_backplane_value(driver, addr, 4, val);
+	whd_bus_unlock();
 }
 
 uint32_t cyw43_ll_read_backplane_reg(cyw43_ll_t *self_in, uint32_t addr)
 {
+	whd_driver_t driver;
 	uint8_t b[4] = {0};
-
 	ARG_UNUSED(self_in);
-	whd_bus_read_backplane_value(bt_whd_driver(), addr, 4, b);
+	if (bt_backplane_begin(&driver) != WHD_SUCCESS) {
+		return 0;
+	}
+	whd_bus_read_backplane_value(driver, addr, 4, b);
+	whd_bus_unlock();
 	return (uint32_t)b[0] | ((uint32_t)b[1] << 8) |
 	       ((uint32_t)b[2] << 16) | ((uint32_t)b[3] << 24);
 }
@@ -121,15 +146,30 @@ uint32_t cyw43_ll_read_backplane_reg(cyw43_ll_t *self_in, uint32_t addr)
 int cyw43_ll_write_backplane_mem(cyw43_ll_t *self_in, uint32_t addr, uint32_t len,
 				 const uint8_t *buf)
 {
+	whd_driver_t driver;
+	whd_result_t result;
 	ARG_UNUSED(self_in);
-	return (int)whd_bus_transfer_backplane_bytes(bt_whd_driver(), BUS_WRITE, addr, len,
-						     (uint8_t *)buf);
+	result = bt_backplane_begin(&driver);
+	if (result != WHD_SUCCESS) {
+		return (int)result;
+	}
+	result = whd_bus_transfer_backplane_bytes(driver, BUS_WRITE, addr, len, (uint8_t *)buf);
+	whd_bus_unlock();
+	return (int)result;
 }
 
 int cyw43_ll_read_backplane_mem(cyw43_ll_t *self_in, uint32_t addr, uint32_t len, uint8_t *buf)
 {
+	whd_driver_t driver;
+	whd_result_t result;
 	ARG_UNUSED(self_in);
-	return (int)whd_bus_transfer_backplane_bytes(bt_whd_driver(), BUS_READ, addr, len, buf);
+	result = bt_backplane_begin(&driver);
+	if (result != WHD_SUCCESS) {
+		return (int)result;
+	}
+	result = whd_bus_transfer_backplane_bytes(driver, BUS_READ, addr, len, buf);
+	whd_bus_unlock();
+	return (int)result;
 }
 
 /* -------------------------------------------------------- BT RX poll thread */
