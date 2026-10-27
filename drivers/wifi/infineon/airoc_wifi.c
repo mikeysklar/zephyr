@@ -81,7 +81,8 @@ NET_BUF_POOL_FIXED_DEFINE(airoc_pool, AIROC_WIFI_PACKET_POOL_COUNT, AIROC_WIFI_P
  */
 static atomic_t airoc_pool_inflight;
 #define AIROC_POOL_BT_RESERVE 6
-BUILD_ASSERT(AIROC_WIFI_PACKET_POOL_COUNT > AIROC_POOL_BT_RESERVE,
+BUILD_ASSERT(!IS_ENABLED(CONFIG_BT_CYW43_SHARED_BUS) ||
+	     AIROC_WIFI_PACKET_POOL_COUNT > AIROC_POOL_BT_RESERVE,
 	     "WHD pool must leave data buffers beyond the Bluetooth reserve");
 
 /* AIROC globals */
@@ -479,7 +480,8 @@ static int airoc_mgmt_send(const struct device *dev, struct net_pkt *pkt)
 	 * drain the shared pool and starve the BT backplane. Dropping this TX is
 	 * preferable: the net stack retransmits.
 	 */
-	if (atomic_get(&airoc_pool_inflight) >=
+	if (IS_ENABLED(CONFIG_BT_CYW43_SHARED_BUS) &&
+	    atomic_get(&airoc_pool_inflight) >=
 	    (AIROC_WIFI_PACKET_POOL_COUNT - AIROC_POOL_BT_RESERVE)) {
 #if defined(CONFIG_NET_STATISTICS_WIFI)
 		data->stats.errors.tx++;
