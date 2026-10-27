@@ -314,9 +314,8 @@ config BT_CYW43_SHARED_BUS
 
 	    git -C modules/hal/rpi_pico submodule update --init lib/cyw43-driver
 
-	  Note the patchram and cyw43-driver headers are licensed under
-	  LICENSE.RP, which permits use only in conjunction with Raspberry Pi
-	  silicon.
+	  cyw43-driver v2.0.0 and later, including the patchram headers, are
+	  under the MIT license.
 source "drivers/bluetooth/hci/Kconfig.bflb"
 source "drivers/bluetooth/hci/Kconfig.esp32"
 source "drivers/bluetooth/hci/Kconfig.infineon"
