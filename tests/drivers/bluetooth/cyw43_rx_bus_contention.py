@@ -1,23 +1,31 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Adafruit Industries
+#
+# SPDX-License-Identifier: Apache-2.0
 """Exercise actual CYW43 RX functions with a contending buffer consumer.
 
 This proves the driver's lock contract, not the cause of a particular DUT hang.
 """
+
 import argparse
-from pathlib import Path
 import subprocess
 import tempfile
+from pathlib import Path
 
-parser = argparse.ArgumentParser(description=__doc__)
+parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
 parser.add_argument('--root', type=Path, required=True)
 parser.add_argument('--baseline', help='Read source from this Git revision')
 args = parser.parse_args()
 
+
 def source(name):
     path = 'drivers/bluetooth/hci/' + name
     if args.baseline:
-        return subprocess.check_output(['git', 'show', args.baseline + ':' + path], cwd=args.root, text=True)
+        return subprocess.check_output(
+            ['git', 'show', args.baseline + ':' + path], cwd=args.root, text=True
+        )
     return (args.root / path).read_text()
+
 
 def function(text, signature):
     start = text.index(signature)
@@ -28,14 +36,18 @@ def function(text, signature):
         end += 1
     return text[start:end]
 
+
 driver = source('hci_cyw43_shared_bus.c')
 glue = source('cyw43_bt_whd_glue.c')
-constants = driver[driver.index('#define PACKET_TYPE '):driver.index('static uint8_t __noinit')]
-parts = [function(driver, signature) for signature in (
-    'static void hci_cyw43_process_one(',
-    'bool cyw43_bluetooth_has_pending(',
-    'void cyw43_bluetooth_hci_process(',
-)]
+constants = driver[driver.index('#define PACKET_TYPE ') : driver.index('static uint8_t __noinit')]
+parts = [
+    function(driver, signature)
+    for signature in (
+        'static void hci_cyw43_process_one(',
+        'bool cyw43_bluetooth_has_pending(',
+        'void cyw43_bluetooth_hci_process(',
+    )
+]
 parts.append(function(glue, 'static void bt_poll_thread('))
 prefix = r'''
 #define _POSIX_C_SOURCE 200809L
@@ -109,15 +121,18 @@ static struct net_buf *allocate(k_timeout_t timeout) {
 static struct net_buf *bt_buf_get_evt(uint8_t event,bool discardable,k_timeout_t timeout) {
  (void)event;assert(discardable==(event_type==BT_HCI_EVT_LE_META_EVENT));return allocate(timeout);
 }
-static struct net_buf *bt_buf_get_rx(int type,k_timeout_t timeout) {(void)type;return allocate(timeout);}
+static struct net_buf *bt_buf_get_rx(int type,k_timeout_t timeout)
+{(void)type;return allocate(timeout);}
 static size_t net_buf_tailroom(struct net_buf *buf) {return sizeof(buf->data)-buf->len;}
-static void net_buf_add_mem(struct net_buf *buf,const void *data,size_t n) {memcpy(buf->data,data,n);buf->len=n;}
+static void net_buf_add_mem(struct net_buf *buf,const void *data,size_t n)
+{memcpy(buf->data,data,n);buf->len=n;}
 static void net_buf_unref(struct net_buf *buf) {(void)buf;}
 static void bt_hci_recv(const struct device *dev,struct net_buf *buf) {
  (void)dev;(void)buf;if(consumer_can_progress())delivered++;
 }
 static int cybt_get_bt_buf_index(cybt_fw_membuf_index_t *idx) {
- if(!depth)unprotected++;idx->bt2host_in_val=remaining;idx->bt2host_out_val=0;return index_error?-1:0;
+ if(!depth)unprotected++;
+  idx->bt2host_in_val=remaining;idx->bt2host_out_val=0;return index_error?-1:0;
 }
 static int cyw43_bluetooth_hci_read(uint8_t *data,uint32_t capacity,uint32_t *length) {
  if(!depth)unprotected++;remaining--;memset(data,0,capacity);
@@ -156,7 +171,8 @@ int main(void) {
   bool ok=!blocked&&!unprotected&&!depth&&delivered==expected;
   if(scenario==10)ok=ok&&remaining==8;
   if(scenario==4||scenario==5)ok=ok&&last_timeout==K_NO_WAIT;
-  printf("scenario=%d %s blocked=%d unprotected=%d delivered=%d remaining=%d\n",scenario,ok?"PASS":"FAIL",blocked,unprotected,delivered,remaining);
+  printf("scenario=%d %s blocked=%d unprotected=%d delivered=%d remaining=%d\n",
+     scenario,ok?"PASS":"FAIL",blocked,unprotected,delivered,remaining);
   failures+=!ok;
  }
  printf("CYW43_RX_BUS_CONTENTION %d/12 passed\n",12-failures);
@@ -165,7 +181,30 @@ int main(void) {
 '''
 with tempfile.TemporaryDirectory(prefix='cyw43-rx-contention-') as tmp:
     path = Path(tmp) / 'test.c'
-    path.write_text(prefix + constants + '\nstatic uint8_t cyw43_rxbuf[MAX_BT_MSG_SIZE + CYW43_PACKET_HEADER_SIZE];\n' + '\n'.join(parts) + main)
+    path.write_text(
+        prefix
+        + constants
+        + '\nstatic uint8_t cyw43_rxbuf[MAX_BT_MSG_SIZE + CYW43_PACKET_HEADER_SIZE];\n'
+        + '\n'.join(parts)
+        + main
+    )
     binary = Path(tmp) / 'test'
-    subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-Wno-misleading-indentation', '-Wno-clobbered', '-pthread', '-fsanitize=undefined', '-fno-sanitize-recover=all', str(path), '-o', str(binary)], check=True)
+    subprocess.run(
+        [
+            'cc',
+            '-std=c11',
+            '-Wall',
+            '-Wextra',
+            '-Werror',
+            '-Wno-misleading-indentation',
+            '-Wno-clobbered',
+            '-pthread',
+            '-fsanitize=undefined',
+            '-fno-sanitize-recover=all',
+            str(path),
+            '-o',
+            str(binary),
+        ],
+        check=True,
+    )
     raise SystemExit(subprocess.run([str(binary)], timeout=30).returncode)

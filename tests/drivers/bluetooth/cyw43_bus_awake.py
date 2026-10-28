@@ -1,31 +1,52 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Adafruit Industries
+#
+# SPDX-License-Identifier: Apache-2.0
 """Compile actual BT memory shims against a sleeping-bus/failure model."""
-from pathlib import Path
-import argparse,subprocess,tempfile
 
-root=Path(__file__).resolve().parents[3]
-parser=argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--root',type=Path,default=root)
-parser.add_argument('--baseline',metavar='REVISION',help='Extract the old implementation with git show; expected to fail')
-args=parser.parse_args()
-relative='drivers/bluetooth/hci/cyw43_bt_whd_glue.c'
-source=(subprocess.check_output(['git','show',args.baseline+':'+relative],cwd=args.root,text=True)
-        if args.baseline else (args.root/relative).read_text())
+import argparse
+import subprocess
+import tempfile
+from pathlib import Path
+
+root = Path(__file__).resolve().parents[3]
+parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
+parser.add_argument('--root', type=Path, default=root)
+parser.add_argument(
+    '--baseline',
+    metavar='REVISION',
+    help='Extract the old implementation with git show; expected to fail',
+)
+args = parser.parse_args()
+relative = 'drivers/bluetooth/hci/cyw43_bt_whd_glue.c'
+source = (
+    subprocess.check_output(
+        ['git', 'show', args.baseline + ':' + relative], cwd=args.root, text=True
+    )
+    if args.baseline
+    else (args.root / relative).read_text()
+)
+
 
 def extract(token):
-    start=source.index(token)
-    brace=source.index('{',start)
-    end=brace+1
-    depth=1
+    start = source.index(token)
+    brace = source.index('{', start)
+    end = brace + 1
+    depth = 1
     while depth:
-        depth+=(source[end]=='{')-(source[end]=='}')
-        end+=1
+        depth += (source[end] == '{') - (source[end] == '}')
+        end += 1
     return source[start:end]
-parts=[]
+
+
+parts = []
 if 'static whd_result_t bt_backplane_begin(' in source:
     parts.append(extract('static whd_result_t bt_backplane_begin('))
-parts.extend(extract('int '+name+'(') for name in ('cyw43_ll_write_backplane_mem','cyw43_ll_read_backplane_mem'))
-harness=r'''
+parts.extend(
+    extract('int ' + name + '(')
+    for name in ('cyw43_ll_write_backplane_mem', 'cyw43_ll_read_backplane_mem')
+)
+harness = r'''
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -52,16 +73,19 @@ static int whd_bus_transfer_backplane_bytes(void*d,int dir,uint32_t a,uint32_t n
  return 0;
 }
 '''
-main=r'''
+main = r'''
 int main(void){int count=0;
  for(int op=0;op<2;op++)for(int initial=0;initial<2;initial++)
  for(int failure=0;failure<3;failure++)for(int recursive=0;recursive<2;recursive++){
   depth=recursive;awake=initial;wake_failure=failure==1;data_failure=failure==2;missing=0;accesses=0;
   uint8_t byte=19;
-  int result=op?cyw43_ll_write_backplane_mem(NULL,0x6a61c,1,&byte):cyw43_ll_read_backplane_mem(NULL,0x6a61c,1,&byte);
+  int result=op?cyw43_ll_write_backplane_mem(NULL,0x6a61c,1,&byte):
+      cyw43_ll_read_backplane_mem(NULL,0x6a61c,1,&byte);
   int expected=failure==1?-10:failure==2?-11:0;
   if(result!=expected||depth!=recursive||accesses!=(failure==1?0:1)){
-   fprintf(stderr,"op=%d initial_awake=%d failure=%d recursive=%d result=%d expected=%d depth=%d accesses=%d\n",op,initial,failure,recursive,result,expected,depth,accesses);
+   fprintf(stderr,"op=%d initial_awake=%d failure=%d recursive=%d result=%d "
+      "expected=%d depth=%d accesses=%d\n",
+      op,initial,failure,recursive,result,expected,depth,accesses);
    return 1;
   }
   assert(byte==((!op&&!failure)?42:19));count++;
@@ -73,8 +97,22 @@ int main(void){int count=0;
 }
 '''
 with tempfile.TemporaryDirectory(prefix='envhub-bt-awake-') as tmp:
-    path=Path(tmp)/'test.c'
-    path.write_text(harness+'\n'.join(parts)+main)
-    binary=Path(tmp)/'test'
-    subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Wno-unused-function','-fsanitize=undefined','-fno-sanitize-recover=all',str(path),'-o',str(binary)],check=True)
+    path = Path(tmp) / 'test.c'
+    path.write_text(harness + '\n'.join(parts) + main)
+    binary = Path(tmp) / 'test'
+    subprocess.run(
+        [
+            'cc',
+            '-std=c11',
+            '-Wall',
+            '-Wextra',
+            '-Wno-unused-function',
+            '-fsanitize=undefined',
+            '-fno-sanitize-recover=all',
+            str(path),
+            '-o',
+            str(binary),
+        ],
+        check=True,
+    )
     raise SystemExit(subprocess.run([str(binary)]).returncode)

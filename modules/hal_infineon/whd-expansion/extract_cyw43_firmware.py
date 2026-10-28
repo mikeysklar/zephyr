@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Adafruit Industries
+#
 # SPDX-License-Identifier: Apache-2.0
 """Extract WHD's WLAN and CLM resources from a Pico SDK combined C array."""
 
@@ -60,7 +62,7 @@ def extract_images(source):
     if match is None:
         raise ValueError("Missing combined firmware byte array")
     data = parse_bytes(match[1])
-    firmware_size, clm_size = sizes
+    firmware_size, clm_size = sizes[0], sizes[1]
     clm_offset = (firmware_size + 511) & ~511
     if len(data) != clm_offset + clm_size:
         raise ValueError("Combined firmware length disagrees with SDK metadata")
@@ -74,7 +76,7 @@ def write_if_changed(path, content):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--input", required=True, type=Path)
     parser.add_argument("--output-directory", required=True, type=Path)
     args = parser.parse_args()
