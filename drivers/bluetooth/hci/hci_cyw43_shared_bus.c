@@ -425,7 +425,7 @@ static DEVICE_API(bt_hci, hci_cyw43_api) = {
 
 #define HCI_DEVICE_INIT(inst)                                                                      \
 	static struct hci_cyw43_data hci_cyw43_data_##inst;                                        \
-	DEVICE_DT_INST_DEFINE(inst, hci_cyw43_init, NULL, &hci_cyw43_data_##inst, NULL,             \
+	DEVICE_DT_INST_DEFINE(inst, hci_cyw43_init, NULL, &hci_cyw43_data_##inst, NULL,            \
 			      POST_KERNEL, CONFIG_BT_HCI_INIT_PRIORITY, &hci_cyw43_api)
 
 DT_INST_FOREACH_STATUS_OKAY(HCI_DEVICE_INIT)

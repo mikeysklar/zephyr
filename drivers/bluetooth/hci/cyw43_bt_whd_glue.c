@@ -30,7 +30,8 @@
 #include <string.h>
 
 /* georgerobotics types plus the cybt entry points, from the hal_rpi_pico
- * lib/cyw43-driver submodule. */
+ * lib/cyw43-driver submodule.
+ */
 #include "cyw43_ll.h"
 #include "cyw43_btbus.h"
 #include "cybt_shared_bus_driver.h"
@@ -48,7 +49,7 @@
 
 LOG_MODULE_REGISTER(cyw43_bt_glue, CONFIG_BT_HCI_DRIVER_LOG_LEVEL);
 
-struct cyw43_bt_state cyw43_bt_state;
+struct cyw43_bt_shared_state cyw43_bt_state;
 
 /*
  * One recursive mutex serializing every gSPI transfer — WHD's WLAN thread (via
@@ -105,10 +106,12 @@ static inline whd_driver_t bt_whd_driver(void)
 
 /* WHD's raw backplane helpers assume the HT clock is already available.
  * Bluetooth runs outside the WHD WLAN thread, including while that thread
- * sleeps the bus. Keep wake + access atomic with WLAN power transitions. */
+ * sleeps the bus. Keep wake + access atomic with WLAN power transitions.
+ */
 static whd_result_t bt_backplane_begin(whd_driver_t *driver)
 {
 	whd_result_t result;
+
 	whd_bus_lock();
 	*driver = bt_whd_driver();
 	result = *driver ? whd_ensure_wlan_bus_is_up(*driver) : WHD_BADARG;
@@ -121,6 +124,7 @@ static whd_result_t bt_backplane_begin(whd_driver_t *driver)
 void cyw43_ll_write_backplane_reg(cyw43_ll_t *self_in, uint32_t addr, uint32_t val)
 {
 	whd_driver_t driver;
+
 	ARG_UNUSED(self_in);
 	if (bt_backplane_begin(&driver) != WHD_SUCCESS) {
 		return;
@@ -133,6 +137,7 @@ uint32_t cyw43_ll_read_backplane_reg(cyw43_ll_t *self_in, uint32_t addr)
 {
 	whd_driver_t driver;
 	uint8_t b[4] = {0};
+
 	ARG_UNUSED(self_in);
 	if (bt_backplane_begin(&driver) != WHD_SUCCESS) {
 		return 0;
@@ -148,6 +153,7 @@ int cyw43_ll_write_backplane_mem(cyw43_ll_t *self_in, uint32_t addr, uint32_t le
 {
 	whd_driver_t driver;
 	whd_result_t result;
+
 	ARG_UNUSED(self_in);
 	result = bt_backplane_begin(&driver);
 	if (result != WHD_SUCCESS) {
@@ -162,6 +168,7 @@ int cyw43_ll_read_backplane_mem(cyw43_ll_t *self_in, uint32_t addr, uint32_t len
 {
 	whd_driver_t driver;
 	whd_result_t result;
+
 	ARG_UNUSED(self_in);
 	result = bt_backplane_begin(&driver);
 	if (result != WHD_SUCCESS) {
@@ -303,7 +310,7 @@ static int cyw43_bt_ensure_up(void)
 
 	cyw43_bt_state.bt_loaded = true;
 	bt_poll_start();
-	LOG_INF("Bluetooth up over WHD bus (patchram loaded), WiFi MAC %02x:%02x:%02x:%02x:%02x:%02x",
+	LOG_INF("BT up over WHD bus (patchram loaded), WiFi MAC %02x:%02x:%02x:%02x:%02x:%02x",
 		cyw43_bt_state.mac[0], cyw43_bt_state.mac[1], cyw43_bt_state.mac[2],
 		cyw43_bt_state.mac[3], cyw43_bt_state.mac[4], cyw43_bt_state.mac[5]);
 	return 0;

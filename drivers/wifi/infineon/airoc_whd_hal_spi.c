@@ -137,7 +137,8 @@ whd_result_t whd_bus_spi_transfer(whd_driver_t whd_driver, const uint8_t *tx, si
 	/* Hold the shared gSPI bus lock across the whole transfer,
 	 * including the SPI_DATA_IRQ_SHARED pinctrl/IRQ toggle below, so a BT
 	 * backplane access can never interleave mid-transfer. Recursive: the BT
-	 * path holds it across a cybt sequence and re-enters here. */
+	 * path holds it across a cybt sequence and re-enters here.
+	 */
 	whd_bus_lock();
 
 #if defined(SPI_DATA_IRQ_SHARED)

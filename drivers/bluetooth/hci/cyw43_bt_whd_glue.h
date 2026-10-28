@@ -25,12 +25,12 @@ void whd_bus_unlock(void);
  * Controller state the HCI driver needs. The CYW43 derives its BD_ADDR from the
  * WiFi MAC + 1, so the glue caches the MAC once WHD is up.
  */
-struct cyw43_bt_state {
+struct cyw43_bt_shared_state {
 	uint8_t mac[6];
 	bool bt_loaded;
 };
 
-extern struct cyw43_bt_state cyw43_bt_state;
+extern struct cyw43_bt_shared_state cyw43_bt_state;
 
 /* Shared-bus HCI transport primitives, implemented over WHD's backplane. */
 int cyw43_bluetooth_hci_init(void);
