@@ -35,7 +35,8 @@ Hardware
 - SHT30 humidity sensor
 - BMP280 temperature and barometric pressure sensor
 - 2 user buttons (A and B)
-- 1 white LED
+- 1 red LED
+- 2 white LEDs on the front, for lighting and color sensing
 - 2 NeoPixel LEDs
 - Buzzer/speaker
 - microSD card slot
@@ -55,7 +56,7 @@ about the board including `pinouts`_ and the `schematic`_.
 LED
 ---
 
-* LED0 (white) = P1.01
+* LED0 (red) = P1.01
 
 Push buttons
 ------------
@@ -99,7 +100,7 @@ does not support debugging the device.
       :goals: flash
       :compact:
 
-#. You should see the white LED blink.
+#. You should see the red LED blink.
 
 References
 **********
