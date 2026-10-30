@@ -97,6 +97,11 @@ struct memc_flexspi_data {
 	FLEXSPI_Type *base;
 	DEVICE_MMIO_NAMED_RAM(reg_base);
 	DEVICE_MMIO_NAMED_RAM(ahb);
+	/* The mapped AHB address, set by memc_flexspi_init(). Without an MMU,
+	 * DEVICE_MMIO_NAMED_GET() reads it from the config, which is in
+	 * flash and cannot be read while the flash is being written.
+	 */
+	uint8_t *ahb;
 	bool xip;
 	bool ahb_bufferable;
 	bool ahb_cacheable;
@@ -138,7 +143,7 @@ static inline FLEXSPI_Type *get_base(const struct device *dev)
 
 static inline uint8_t *get_ahb(const struct device *dev)
 {
-	return (uint8_t *)DEVICE_MMIO_NAMED_GET(dev, ahb);
+	return DEV_DATA(dev)->ahb;
 }
 
 void memc_flexspi_wait_bus_idle(const struct device *dev)
@@ -398,7 +403,7 @@ void *memc_flexspi_get_ahb_address(const struct device *dev,
 		flexspi_port_t port, off_t offset)
 {
 	struct memc_flexspi_data *data = dev->data;
-	uint8_t *ahb_base = (uint8_t *)DEVICE_MMIO_NAMED_GET(dev, ahb);
+	uint8_t *ahb_base = get_ahb(dev);
 	int i;
 
 	if (port >= kFLEXSPI_PortCount) {
@@ -588,6 +593,11 @@ static int memc_flexspi_init(const struct device *dev)
 	DEVICE_MMIO_NAMED_MAP(dev, ahb, data->ahb_cacheable ? K_MEM_DIRECT_MAP
 				: (K_MEM_CACHE_NONE | K_MEM_DIRECT_MAP));
 	data->base = (FLEXSPI_Type *)DEVICE_MMIO_NAMED_GET(dev, reg_base);
+	/* Save the mapped AHB address in RAM too. Without an MMU,
+	 * DEVICE_MMIO_NAMED_GET() reads it from the config, which is in
+	 * flash, and the flash cannot be read while it is being written.
+	 */
+	data->ahb = (uint8_t *)DEVICE_MMIO_NAMED_GET(dev, ahb);
 	base = get_base(dev);
 
 #ifdef MEMC_FLEXSPI_IPED
