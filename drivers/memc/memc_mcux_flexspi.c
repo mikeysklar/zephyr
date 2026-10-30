@@ -247,6 +247,7 @@ int memc_flexspi_set_device_config(const struct device *dev,
 	uint8_t lut_used = 0U;
 	int ret;
 	uint32_t divider;
+	uint32_t root_clk;
 
 	if (port >= kFLEXSPI_PortCount) {
 		LOG_ERR("Invalid port number");
@@ -292,6 +293,19 @@ int memc_flexspi_set_device_config(const struct device *dev,
 	tmp_config.ARDSeqIndex += data->port_luts[port].lut_offset / MEMC_FLEXSPI_CMD_PER_SEQ;
 	tmp_config.AWRSeqIndex += data->port_luts[port].lut_offset / MEMC_FLEXSPI_CMD_PER_SEQ;
 
+	/* Get the real clock for DLL updating. Read it before reclocking:
+	 * clock_control_get_rate() may execute from flash, and once
+	 * memc_flexspi_update_clock() has changed the divider the FlexSPI runs
+	 * at the new speed with the old LUT until FLEXSPI_SetFlashConfig() and
+	 * FLEXSPI_UpdateLUT() below. update_clock() only changes the FlexSPI's
+	 * own divider, never the root clock, so the rate is still valid.
+	 */
+	ret = clock_control_get_rate(data->clock_dev, data->clock_subsys, &root_clk);
+	if (ret < 0) {
+		LOG_ERR("memc flexspi get root clock error: %d", ret);
+		return ret;
+	}
+
 	/* Set FlexSPI clock to the max frequency flash can support.
 	 * FLEXSPI_SetFlashConfig only update DLL but not the freq divider.
 	 */
@@ -302,15 +316,8 @@ int memc_flexspi_set_device_config(const struct device *dev,
 		return ret;
 	}
 
-	/* Get the real clock for DLL updating. */
-	ret = clock_control_get_rate(data->clock_dev, data->clock_subsys,
-				&tmp_config.flexspiRootClk);
-	if (ret < 0) {
-		LOG_ERR("memc flexspi get root clock error: %d", ret);
-		return ret;
-	}
 	divider = (base->MCR0 & FLEXSPI_MCR0_SERCLKDIV_MASK) >> FLEXSPI_MCR0_SERCLKDIV_SHIFT;
-	tmp_config.flexspiRootClk /= (divider + 1);
+	tmp_config.flexspiRootClk = root_clk / (divider + 1);
 
 	/* Lock IRQs before reconfiguring FlexSPI, to prevent XIP */
 #if CONFIG_FLASH_MCUX_FLEXSPI_XIP
