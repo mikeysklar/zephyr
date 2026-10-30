@@ -138,8 +138,7 @@ arduino_serial: &lpuart1 {};
 	};
 };
 
-/* Also on the STEMMA QT connector. */
-arduino_i2c: zephyr_i2c: &lpi2c1 {
+arduino_i2c: &lpi2c1 {
 	status = "okay";
 	pinctrl-0 = <&pinmux_lpi2c1>;
 	pinctrl-names = "default";
@@ -152,6 +151,9 @@ arduino_i2c: zephyr_i2c: &lpi2c1 {
 	pinctrl-1 = <&pinmux_lpuart1_sleep>;
 	pinctrl-names = "default", "sleep";
 };
+
+/* The arduino_i2c bus is also on the STEMMA QT connector. */
+zephyr_i2c: &lpi2c1 {};
 
 arduino_spi: &lpspi1 {
 	status = "okay";
