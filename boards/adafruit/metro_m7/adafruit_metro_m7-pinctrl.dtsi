@@ -1,0 +1,79 @@
+/*
+ * Copyright (c) 2026 Adafruit Industries LLC
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <nxp/imxrt/imxrt10xx/pinctrl/mimxrt1011dae5a-pinctrl.dtsi>
+
+&pinctrl {
+	/* A0-A5 */
+	pinmux_adc1: pinmux_adc1 {
+		group0 {
+			pinmux = <&iomuxc_gpio_ad_02_adc1_in2>,
+				 <&iomuxc_gpio_ad_01_adc1_in1>,
+				 <&iomuxc_gpio_ad_00_adc1_in0>,
+				 <&iomuxc_gpio_ad_05_adc1_in5>,
+				 <&iomuxc_gpio_ad_10_adc1_in10>,
+				 <&iomuxc_gpio_ad_08_adc1_in8>;
+			drive-strength = "r0-4";
+			slew-rate = "slow";
+			nxp,speed = "100-mhz";
+		};
+	};
+
+	/* SDA and SCL, also on the STEMMA QT connector */
+	pinmux_lpi2c1: pinmux_lpi2c1 {
+		group0 {
+			pinmux = <&iomuxc_gpio_01_lpi2c1_sda>, <&iomuxc_gpio_02_lpi2c1_scl>;
+			drive-strength = "r0-4";
+			drive-open-drain;
+			slew-rate = "slow";
+			nxp,speed = "100-mhz";
+			input-enable;
+		};
+	};
+
+	/* SCK, MOSI and MISO on the 2x3 SPI header. No hardware chip select:
+	 * GPIO_AD_05 (LPSPI1_PCS0) is A3.
+	 */
+	pinmux_lpspi1: pinmux_lpspi1 {
+		group0 {
+			pinmux = <&iomuxc_gpio_ad_06_lpspi1_sck>,
+				 <&iomuxc_gpio_ad_04_lpspi1_sdo>,
+				 <&iomuxc_gpio_ad_03_lpspi1_sdi>;
+			drive-strength = "r0-4";
+			slew-rate = "slow";
+			nxp,speed = "100-mhz";
+		};
+	};
+
+	/* D0 (RX) and D1 (TX) */
+	pinmux_lpuart1: pinmux_lpuart1 {
+		group0 {
+			pinmux = <&iomuxc_gpio_09_lpuart1_rxd>,
+				 <&iomuxc_gpio_10_lpuart1_txd>;
+			drive-strength = "r0-4";
+			slew-rate = "slow";
+			nxp,speed = "100-mhz";
+		};
+	};
+
+	pinmux_lpuart1_sleep: pinmux_lpuart1_sleep {
+		group0 {
+			pinmux = <&iomuxc_gpio_09_gpiomux_io09>;
+			drive-strength = "r0-4";
+			bias-pull-up;
+			bias-pull-up-value = "100k";
+			slew-rate = "slow";
+			nxp,speed = "100-mhz";
+		};
+
+		group1 {
+			pinmux = <&iomuxc_gpio_10_lpuart1_txd>;
+			drive-strength = "r0-4";
+			slew-rate = "slow";
+			nxp,speed = "100-mhz";
+		};
+	};
+};

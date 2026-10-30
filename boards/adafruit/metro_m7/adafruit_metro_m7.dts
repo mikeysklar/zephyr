@@ -1,0 +1,14 @@
+/*
+ * Copyright (c) 2026 Adafruit Industries LLC
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/dts-v1/;
+
+#include "adafruit_metro_m7_common.dtsi"
+
+/ {
+	model = "Adafruit Metro M7 with microSD";
+	compatible = "adafruit,metro-m7", "nxp,mimxrt1011";
+};

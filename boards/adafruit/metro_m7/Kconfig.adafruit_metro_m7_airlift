@@ -1,0 +1,7 @@
+# Adafruit Metro M7 with AirLift board configuration
+
+# Copyright (c) 2026 Adafruit Industries LLC
+# SPDX-License-Identifier: Apache-2.0
+
+config BOARD_ADAFRUIT_METRO_M7_AIRLIFT
+	select SOC_PART_NUMBER_MIMXRT1011DAE5A

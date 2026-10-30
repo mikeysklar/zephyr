@@ -1,0 +1,11 @@
+boards:
+- name: adafruit_metro_m7
+  full_name: Adafruit Metro M7 with microSD
+  vendor: adafruit
+  socs:
+  - name: mimxrt1011
+- name: adafruit_metro_m7_airlift
+  full_name: Adafruit Metro M7 with AirLift
+  vendor: adafruit
+  socs:
+  - name: mimxrt1011
