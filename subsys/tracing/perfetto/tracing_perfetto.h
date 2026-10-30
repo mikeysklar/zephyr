@@ -516,4 +516,11 @@ void perfetto_trace_gpio_port_toggle_bits_exit(const struct device *port, int re
 }
 #endif
 
+/*
+ * Fill any sys_port_trace_* hook not defined above with a canonical no-op. The
+ * per-macro #ifndef guards keep the real definitions above; only gaps are filled,
+ * so this header never has to drift from the canonical hook list.
+ */
+#include <zephyr/tracing/tracing_hooks.h>
+
 #endif /* SUBSYS_TRACING_PERFETTO_H */
