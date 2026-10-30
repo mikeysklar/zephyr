@@ -34,6 +34,15 @@
 		};
 	};
 
+	stemma_connector: stemma_connector {
+		compatible = "stemma-qt-connector";
+		#gpio-cells = <2>;
+		gpio-map-mask = <0xffffffff 0xffffffc0>;
+		gpio-map-pass-thru = <0 0x3f>;
+		gpio-map = <0 0 &gpio1 2 0>,	/* SCL, GPIO_02 */
+			   <1 0 &gpio1 1 0>;	/* SDA, GPIO_01 */
+	};
+
 	arduino_header: connector {
 		compatible = "arduino-header-r3";
 		#gpio-cells = <2>;
@@ -129,7 +138,8 @@ arduino_serial: &lpuart1 {};
 	};
 };
 
-arduino_i2c: &lpi2c1 {
+/* Also on the STEMMA QT connector. */
+arduino_i2c: zephyr_i2c: &lpi2c1 {
 	status = "okay";
 	pinctrl-0 = <&pinmux_lpi2c1>;
 	pinctrl-names = "default";
