@@ -8,6 +8,7 @@ arch: arm
 toolchain:
   - zephyr
   - gnuarmemb
+# Size of zephyr,sram (OCRAM), not all 128 KB; Twister uses it to filter tests.
 ram: 64
 flash: 8192
 supported:
