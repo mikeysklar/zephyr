@@ -1,0 +1,16 @@
+# Copyright (c) 2026 Adafruit Industries
+# SPDX-License-Identifier: Apache-2.0
+
+identifier: adafruit_metro_ch32v407
+name: Adafruit Metro CH32V407
+type: mcu
+arch: riscv
+toolchain:
+  - zephyr
+ram: 200
+flash: 892
+supported:
+  - gpio
+  - spi
+  - uart
+vendor: adafruit

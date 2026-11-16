@@ -1,0 +1,54 @@
+/*
+ * Copyright (c) 2026 Adafruit Industries
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <zephyr/dt-bindings/pinctrl/ch32v20x_30x-pinctrl.h>
+
+&pinctrl {
+	/* D1 TX on PB6, D0 RX on PB7 (USART1 remap 1). */
+	usart1_default: usart1_default {
+		group1 {
+			pinmux = <USART1_TX_PB6_1>;
+			output-high;
+			drive-push-pull;
+			slew-rate = "max-speed-50mhz";
+		};
+
+		group2 {
+			pinmux = <USART1_RX_PB7_1>;
+			bias-pull-up;
+		};
+	};
+
+	/* SCK PA5, MISO PA6, MOSI PA7 on the 2x3 SPI header. */
+	spi1_default: spi1_default {
+		group1 {
+			pinmux = <SPI1_SCK_PA5_0>, <SPI1_MOSI_PA7_0>;
+			output-low;
+			drive-push-pull;
+			slew-rate = "max-speed-50mhz";
+		};
+
+		group2 {
+			pinmux = <SPI1_MISO_PA6_0>;
+			bias-pull-up;
+		};
+	};
+
+	/* SPI flash: SCK PB3, MISO PB4, MOSI PB5, CS PA15 (GPIO). */
+	spi3_default: spi3_default {
+		group1 {
+			pinmux = <SPI3_SCK_PB3_0>, <SPI3_MOSI_PB5_0>;
+			output-low;
+			drive-push-pull;
+			slew-rate = "max-speed-50mhz";
+		};
+
+		group2 {
+			pinmux = <SPI3_MISO_PB4_0>;
+			bias-pull-up;
+		};
+	};
+};

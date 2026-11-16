@@ -1,0 +1,15 @@
+/*
+ * Copyright (c) 2026 Adafruit Industries
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/dts-v1/;
+
+#include <wch/ch32v4x7/ch32v467.dtsi>
+#include "adafruit_metro_ch32v4x7.dtsi"
+
+/ {
+	compatible = "adafruit,metro-ch32v467";
+	model = "Adafruit Metro CH32V467";
+};

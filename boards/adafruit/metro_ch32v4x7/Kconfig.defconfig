@@ -1,0 +1,17 @@
+# Copyright (c) 2026 Adafruit Industries
+# SPDX-License-Identifier: Apache-2.0
+
+if BOARD_ADAFRUIT_METRO_CH32V407 || BOARD_ADAFRUIT_METRO_CH32V467
+
+# adaboot occupies the first 64 KiB. Applications are linked into slot0.
+configdefault USE_DT_CODE_PARTITION
+	default y
+
+configdefault BUILD_OUTPUT_UF2
+	default y
+
+# adaboot UF2 family
+configdefault BUILD_OUTPUT_UF2_FAMILY_ID
+	default "0xf4b47471"
+
+endif # BOARD_ADAFRUIT_METRO_CH32V407 || BOARD_ADAFRUIT_METRO_CH32V467

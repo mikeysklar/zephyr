@@ -1,0 +1,166 @@
+/*
+ * Copyright (c) 2026 Adafruit Industries
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+#include "adafruit_metro_ch32v4x7-pinctrl.dtsi"
+
+/ {
+	chosen {
+		zephyr,sram = &sram0;
+		zephyr,flash = &flash0;
+		zephyr,code-partition = &slot0_partition;
+		zephyr,console = &usart1;
+		zephyr,shell-uart = &usart1;
+	};
+
+	aliases {
+		led0 = &led;
+		spi-flash0 = &spi_flash;
+		sw0 = &user_button;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		led: led {
+			gpios = <&gpiob 12 GPIO_ACTIVE_HIGH>;
+			label = "D13 LED";
+		};
+	};
+
+	arduino_header: connector {
+		compatible = "arduino-header-r3";
+		#gpio-cells = <2>;
+		gpio-map-mask = <0xffffffff 0xffffffc0>;
+		gpio-map-pass-thru = <0 0x3f>;
+		gpio-map = <0 0 &gpioa 4 0>,	/* A0 */
+			   <1 0 &gpioa 3 0>,	/* A1 */
+			   <2 0 &gpiob 0 0>,	/* A2 */
+			   <3 0 &gpiob 1 0>,	/* A3 */
+			   <4 0 &gpioc 4 0>,	/* A4 */
+			   <5 0 &gpioc 5 0>,	/* A5 */
+			   <6 0 &gpiob 7 0>,	/* D0 */
+			   <7 0 &gpiob 6 0>,	/* D1 */
+			   <8 0 &gpiob 8 0>,	/* D2 */
+			   <9 0 &gpiob 9 0>,	/* D3 */
+			   <10 0 &gpioc 0 0>,	/* D4 */
+			   <11 0 &gpioc 1 0>,	/* D5 */
+			   <12 0 &gpioc 2 0>,	/* D6 */
+			   <13 0 &gpioc 3 0>,	/* D7 */
+			   <14 0 &gpioa 0 0>,	/* D8 */
+			   <15 0 &gpioa 1 0>,	/* D9 */
+			   <16 0 &gpioa 2 0>,	/* D10 */
+			   <17 0 &gpioa 8 0>,	/* D11 */
+			   <18 0 &gpioa 9 0>,	/* D12 */
+			   <19 0 &gpiob 12 0>,	/* D13 */
+			   <20 0 &gpiob 11 0>,	/* SDA */
+			   <21 0 &gpiob 10 0>;	/* SCL */
+	};
+
+	buttons {
+		compatible = "gpio-keys";
+
+		user_button: button {
+			gpios = <&gpioc 15 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "USER";
+			zephyr,code = <INPUT_KEY_0>;
+		};
+	};
+};
+
+&clk_hse {
+	clock-frequency = <DT_FREQ_M(25)>;
+	status = "okay";
+};
+
+&pll {
+	clocks = <&clk_hse>;
+	mul = <16>;
+	status = "okay";
+};
+
+&rcc {
+	clocks = <&pll>;
+};
+
+&gpioa {
+	status = "okay";
+};
+
+&gpiob {
+	status = "okay";
+};
+
+&gpioc {
+	status = "okay";
+};
+
+&usart1 {
+	current-speed = <115200>;
+	pinctrl-0 = <&usart1_default>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&spi1 {
+	pinctrl-0 = <&spi1_default>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&spi3 {
+	pinctrl-0 = <&spi3_default>;
+	pinctrl-names = "default";
+	cs-gpios = <&gpioa 15 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+	/* 4 MB SPI NOR (GD25Q32) */
+	spi_flash: flash@0 {
+		compatible = "jedec,spi-nor";
+		reg = <0>;
+		spi-max-frequency = <DT_FREQ_M(25)>;
+		size = <DT_SIZE_M(32)>;
+		has-dpd;
+		t-enter-dpd = <3000>;
+		t-exit-dpd = <30000>;
+		status = "okay";
+	};
+};
+
+&flash0 {
+	partitions {
+		ranges;
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		/* adaboot (MCUboot with a UF2 drive) */
+		boot_partition: partition@0 {
+			compatible = "zephyr,mapped-partition";
+			reg = <0x00000000 DT_SIZE_K(64)>;
+			label = "mcuboot";
+			read-only;
+		};
+
+		/* Single-app slot. Only the first 448 KiB are zero wait state. */
+		slot0_partition: partition@10000 {
+			compatible = "zephyr,mapped-partition";
+			reg = <0x00010000 DT_SIZE_K(892)>;
+			label = "image-0";
+		};
+
+		storage_partition: partition@ef000 {
+			compatible = "zephyr,mapped-partition";
+			reg = <0x000ef000 DT_SIZE_K(32)>;
+			label = "storage";
+		};
+
+		nvm_partition: partition@f7000 {
+			compatible = "zephyr,mapped-partition";
+			reg = <0x000f7000 DT_SIZE_K(4)>;
+			label = "nvm";
+		};
+	};
+};
