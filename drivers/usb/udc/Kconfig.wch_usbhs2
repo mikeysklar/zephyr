@@ -1,0 +1,28 @@
+# Copyright (c) 2026 Adafruit Industries
+# SPDX-License-Identifier: Apache-2.0
+
+config UDC_WCH_USBHS2
+	bool "WCH USBHS (second generation) device controller driver"
+	default y
+	depends on DT_HAS_WCH_USBHS2_ENABLED
+	select EVENTS
+	select UDC_DRIVER_HAS_HIGH_SPEED_SUPPORT
+	help
+	  Driver for the WCH second generation USBHS device controller found
+	  on the CH32V4x7.
+
+if UDC_WCH_USBHS2
+
+config UDC_WCH_USBHS2_STACK_SIZE
+	int "UDC controller driver internal thread stack size"
+	default 512
+	help
+	  Device controller driver internal thread stack size.
+
+config UDC_WCH_USBHS2_THREAD_PRIORITY
+	int "UDC controller driver thread priority"
+	default 8
+	help
+	  Device controller driver thread priority.
+
+endif # UDC_WCH_USBHS2
