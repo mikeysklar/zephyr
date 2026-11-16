@@ -113,3 +113,29 @@
 &cpu0 {
 	clock-frequency = <DT_FREQ_M(200)>;
 };
+
+/ {
+	soc {
+		/* HB clock gate bit 11 (RCC_HBPeriph_USBHS2) */
+		usbhs2: usb@40023400 {
+			compatible = "wch,usbhs2";
+			reg = <0x40023400 0x100>;
+			interrupt-parent = <&pfic>;
+			interrupts = <85>;
+			clocks = <&rcc CH32V20X_V30X_CLOCK_CONFIG(AHB, 11)>;
+			num-bidir-endpoints = <8>;
+			status = "disabled";
+		};
+
+		/* HB clock gate bit 12 (RCC_HBPeriph_USBHS1) */
+		usbhs1: usb@40024000 {
+			compatible = "wch,usbhs2";
+			reg = <0x40024000 0x100>;
+			interrupt-parent = <&pfic>;
+			interrupts = <83>;
+			clocks = <&rcc CH32V20X_V30X_CLOCK_CONFIG(AHB, 12)>;
+			num-bidir-endpoints = <8>;
+			status = "disabled";
+		};
+	};
+};
