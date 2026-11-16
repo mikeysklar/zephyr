@@ -27,6 +27,13 @@
 #define WCH_RCC_SRC_IS_H41X_PLL DT_NODE_HAS_COMPAT(DT_INST_CLOCKS_CTLR(0), wch_ch32h41x_pll_clock)
 
 /*
+ * The CH32V4X7 PLL feeds a SYSPLL stage, and HCLK is SYSCLK / 2. The register
+ * layout matches the CH32V30x for everything this driver touches except
+ * CFGR2, so only the bring-up sequence differs.
+ */
+#define WCH_RCC_SRC_IS_V4X7_PLL DT_NODE_HAS_COMPAT(DT_INST_CLOCKS_CTLR(0), wch_ch32v4x7_pll_clock)
+
+/*
  * The CH32H41X RCC keeps the CH32V20x/30x clock-enable register ordering (AHB,
  * then APB2, then APB1) but names them HBPCENR / HB2PCENR / HB1PCENR. Alias the
  * first clock-enable register so the shared offset arithmetic below keeps working.
@@ -119,6 +126,13 @@ static int clock_control_wch_rcc_get_rate(const struct device *dev, clock_contro
 	}
 
 	*rate = ahbclk;
+	return 0;
+#endif
+
+#if WCH_RCC_SRC_IS_V4X7_PLL
+	/* The CPU clock is HCLK, and the PB1/PB2 prescalers are left at 1. */
+	ARG_UNUSED(cfgr0);
+	*rate = sysclk;
 	return 0;
 #endif
 
@@ -233,6 +247,97 @@ static void clock_control_wch_h41x_init_480m(void)
 }
 #endif
 
+#if WCH_RCC_SRC_IS_V4X7_PLL
+/* CH32V407 RM chapter 3 bit fields that differ from the CH32V30x. */
+#define V4X7_RCC_PLLMULL             GENMASK(21, 17)
+#define V4X7_RCC_HPRE_DIV2           (0x8U << 4)
+#define V4X7_RCC_CFGR2_SYSPLLDIV     GENMASK(10, 8)
+#define V4X7_RCC_CFGR2_SYSPLLGATE    BIT(12)
+#define V4X7_RCC_CFGR2_SYSPLLSRC     GENMASK(15, 13)
+#define V4X7_RCC_CFGR2_SYSPLLSRC_PLL (0x6U << 13)
+#define V4X7_FLASH_CTLR_SCKMOD       GENMASK(26, 25)
+#define V4X7_FLASH_CTLR_SCKMOD_DIV2  (0x1U << 25)
+#define V4X7_CLK_TIMEOUT_CYCLES      500000U
+
+#define V4X7_PLL_NODE    DT_INST_CLOCKS_CTLR(0)
+#define V4X7_PLL_SRC_HSE DT_NODE_HAS_COMPAT(DT_CLOCKS_CTLR(V4X7_PLL_NODE), wch_ch32v00x_hse_clock)
+
+/* PLLMUL field values in half steps: entry n is the multiplier * 2 (RM table 3-4). */
+static const uint8_t v4x7_pllmul_x2[] = {16, 18, 20, 22, 24, 25, 26, 27, 28, 29, 30,
+					 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 42,
+					 44, 48, 52, 56, 60, 64, 68, 72, 76, 80};
+
+static bool clock_control_wch_v4x7_wait(volatile uint32_t *reg, uint32_t mask, uint32_t value)
+{
+	uint32_t start = csr_read(mcycle);
+
+	while ((*reg & mask) != value) {
+		if ((uint32_t)(csr_read(mcycle) - start) > V4X7_CLK_TIMEOUT_CYCLES) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+static void clock_control_wch_v4x7_init(uint8_t mul)
+{
+	uint32_t field = 0;
+	uint32_t ctlr;
+
+	for (size_t i = 0; i < ARRAY_SIZE(v4x7_pllmul_x2); i++) {
+		if (v4x7_pllmul_x2[i] == mul * 2) {
+			field = i;
+			break;
+		}
+	}
+
+	/* A bootloader may have left the PLL running. Move to HSI before changing it. */
+	RCC->CTLR |= RCC_HSION;
+	(void)clock_control_wch_v4x7_wait(&RCC->CTLR, RCC_HSIRDY, RCC_HSIRDY);
+	RCC->CFGR0 = (RCC->CFGR0 & ~RCC_SW) | RCC_SW_HSI;
+	(void)clock_control_wch_v4x7_wait(&RCC->CFGR0, RCC_SWS, RCC_SWS_HSI);
+	RCC->CFGR2 &= ~V4X7_RCC_CFGR2_SYSPLLGATE;
+	RCC->CTLR &= ~RCC_PLLON;
+
+	if (V4X7_PLL_SRC_HSE) {
+		RCC->CTLR |= RCC_HSEON;
+		if (!clock_control_wch_v4x7_wait(&RCC->CTLR, RCC_HSERDY, RCC_HSERDY)) {
+			/* No crystal: stay on HSI rather than run the PLL from nothing. */
+			return;
+		}
+	}
+
+	/* HCLK = SYSCLK / 2, PCLK1 = PCLK2 = HCLK. */
+	RCC->CFGR0 =
+		(RCC->CFGR0 & ~(RCC_HPRE | RCC_PPRE1 | RCC_PPRE2 | RCC_PLLSRC | V4X7_RCC_PLLMULL)) |
+		V4X7_RCC_HPRE_DIV2 | (V4X7_PLL_SRC_HSE ? RCC_PLLSRC : 0) |
+		FIELD_PREP(V4X7_RCC_PLLMULL, field);
+	RCC->CTLR |= RCC_PLLON;
+	(void)clock_control_wch_v4x7_wait(&RCC->CTLR, RCC_PLLRDY, RCC_PLLRDY);
+
+	/* SYSPLL takes the PLL output undivided. */
+	RCC->CFGR2 = (RCC->CFGR2 & ~(V4X7_RCC_CFGR2_SYSPLLSRC | V4X7_RCC_CFGR2_SYSPLLDIV)) |
+		     V4X7_RCC_CFGR2_SYSPLLSRC_PLL;
+	(void)clock_control_wch_v4x7_wait(&RCC->CFGR2, V4X7_RCC_CFGR2_SYSPLLSRC,
+					  V4X7_RCC_CFGR2_SYSPLLSRC_PLL);
+
+	/* The flash clock must not exceed 100 MHz (RM 32.4.4), so run it at HCLK / 2. */
+	FLASH->KEYR = FLASH_KEY1;
+	FLASH->KEYR = FLASH_KEY2;
+	FLASH->MODEKEYR = FLASH_KEY1;
+	FLASH->MODEKEYR = FLASH_KEY2;
+	ctlr = FLASH->CTLR;
+	ctlr = (ctlr & ~V4X7_FLASH_CTLR_SCKMOD) | V4X7_FLASH_CTLR_SCKMOD_DIV2;
+	FLASH->CTLR = ctlr;
+	FLASH->CTLR |= FLASH_CTLR_LOCK | FLASH_CTLR_FAST_LOCK;
+
+	RCC->CFGR2 |= V4X7_RCC_CFGR2_SYSPLLGATE;
+	RCC->CFGR0 = (RCC->CFGR0 & ~RCC_SW) | RCC_SW_PLL;
+	(void)clock_control_wch_v4x7_wait(&RCC->CFGR0, RCC_SWS, RCC_SWS_PLL);
+}
+#endif
+
 static DEVICE_API(clock_control, clock_control_wch_rcc_api) = {
 	.on = clock_control_wch_rcc_on,
 	.get_rate = clock_control_wch_rcc_get_rate,
@@ -250,6 +355,18 @@ static int clock_control_wch_rcc_init(const struct device *dev)
 	}
 
 	RCC->CTLR |= RCC_CSSON;
+	RCC->INTR = RCC_CSSC | RCC_PLLRDYC | RCC_HSERDYC | RCC_LSIRDYC;
+
+	return 0;
+#endif
+
+#if WCH_RCC_SRC_IS_V4X7_PLL
+	const struct clock_control_wch_rcc_config *config = dev->config;
+
+	clock_control_wch_v4x7_init(config->mul);
+
+	RCC->RSTSCKR |= RCC_LSION;
+	(void)clock_control_wch_v4x7_wait(&RCC->RSTSCKR, RCC_LSIRDY, RCC_LSIRDY);
 	RCC->INTR = RCC_CSSC | RCC_PLLRDYC | RCC_HSERDYC | RCC_LSIRDYC;
 
 	return 0;
@@ -294,7 +411,7 @@ static int clock_control_wch_rcc_init(const struct device *dev)
 		} else if (IS_ENABLED(WCH_RCC_PLL_SRC_IS_HSI)) {
 			RCC->CFGR0 &= ~RCC_PLLSRC;
 		}
-#if defined(RCC_PLLMULL)
+#if defined(RCC_PLLMULL) && defined(CONFIG_DT_HAS_WCH_CH32V20X_30X_PLL_CLOCK_ENABLED)
 		const struct clock_control_wch_rcc_config *config = dev->config;
 		uint8_t pllmul = 0x0; /* Default Reset Value */
 
