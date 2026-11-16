@@ -1,0 +1,53 @@
+# Copyright (c) 2026 Adafruit Industries
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  WCH CH32V4x7 system PLL
+
+  The PLL multiplies HSE or HSI to SYSCLK. The core and bus clock (HCLK) is
+  SYSCLK / 2, so set the CPU clock-frequency to half of the PLL output.
+  For example, a 25 MHz HSE with mul = 16 gives SYSCLK = 400 MHz and
+  HCLK = 200 MHz.
+
+compatible: "wch,ch32v4x7-pll-clock"
+
+include: [clock-controller.yaml, base.yaml]
+
+properties:
+  "#clock-cells":
+    const: 0
+
+  clocks:
+    type: phandle-array
+    required: true
+
+  mul:
+    type: int
+    required: true
+    description: |
+      PLL multiplication factor.
+    enum:
+      - 8
+      - 9
+      - 10
+      - 11
+      - 12
+      - 13
+      - 14
+      - 15
+      - 16
+      - 17
+      - 18
+      - 19
+      - 20
+      - 21
+      - 22
+      - 24
+      - 26
+      - 28
+      - 30
+      - 32
+      - 34
+      - 36
+      - 38
+      - 40
