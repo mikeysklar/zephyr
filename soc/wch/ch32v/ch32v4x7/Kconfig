@@ -1,0 +1,9 @@
+# Copyright (c) 2026 Adafruit Industries
+# SPDX-License-Identifier: Apache-2.0
+
+config SOC_SERIES_CH32V4X7
+	select HAS_FLASH_LOAD_OFFSET
+	# The PFIC keeps an interrupt active until mret. A switch at ISR exit
+	# into a thread that yielded cooperatively would resume it with ret and
+	# leave the interrupt active, blocking every interrupt of that level.
+	select RISCV_ALWAYS_SWITCH_THROUGH_ECALL if MULTITHREADING

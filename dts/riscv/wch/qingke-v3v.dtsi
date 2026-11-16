@@ -1,0 +1,63 @@
+/*
+ * Copyright (c) 2026 Adafruit Industries
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	power-states {
+		run0: run0 {
+			compatible = "zephyr,power-state";
+			power-state-name = "runtime-idle";
+			substate-id = <1>;
+		};
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		/* The vector unit (Zve64x) is not described until Zephyr uses it. */
+		cpu0: cpu@0 {
+			compatible = "wch,qingke-v3v", "riscv";
+			reg = <0>;
+			device_type = "cpu";
+			cpu-power-states = <&run0>;
+			riscv,isa-base = "rv32i";
+			riscv,isa-extensions = "i", "m", "a", "c", "zicsr", "zifencei";
+		};
+	};
+
+	soc {
+		compatible = "simple-bus";
+		ranges;
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		/* QingKe V3V maps DATA0/DATA1 at 0xe0000340 (WCH CH32V4x7 debug.c). */
+		sdiconsole: sdi-console@e0000340 {
+			compatible = "wch,sdi-console";
+			reg = <0xe0000340 0x0c>;
+		};
+
+		pfic: interrupt-controller@e000e000 {
+			compatible = "wch,pfic";
+			reg = <0xe000e000 0x10>;
+			#address-cells = <0>;
+			#interrupt-cells = <1>;
+			interrupt-controller;
+			status = "okay";
+		};
+
+		systick: systimer@e000f000 {
+			compatible = "wch,systick";
+			reg = <0xe000f000 0x10>;
+			interrupt-parent = <&pfic>;
+			interrupts = <12>;
+			status = "okay";
+		};
+	};
+};

@@ -30,6 +30,10 @@ family:
     - name: ch32v305
     - name: ch32v307
     - name: ch32v317
+  - name: ch32v4x7
+    socs:
+    - name: ch32v407
+    - name: ch32v467
   - name: ch32h41x
     socs:
     - name: ch32h417

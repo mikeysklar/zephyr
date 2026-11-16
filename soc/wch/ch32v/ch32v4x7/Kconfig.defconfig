@@ -1,0 +1,26 @@
+# Copyright (c) 2026 Adafruit Industries
+# SPDX-License-Identifier: Apache-2.0
+
+if SOC_SERIES_CH32V4X7
+
+config SYS_CLOCK_HW_CYCLES_PER_SEC
+	default $(dt_node_int_prop_int,/cpus/cpu@0,clock-frequency)
+
+config CLOCK_CONTROL
+	default y
+
+config VECTOR_TABLE_SIZE
+	default 103
+
+config NUM_IRQS
+	default 128
+
+config BUILD_OUTPUT_UF2_FAMILY_ID
+	default "0x7b8c32a7"
+
+# mtvec holds a 1 KiB aligned base (RM 9.2.3.6), so the vector table after
+# an MCUboot header must start on a 1 KiB boundary.
+configdefault ROM_START_OFFSET
+	default 0x400 if BOOTLOADER_MCUBOOT
+
+endif # SOC_SERIES_CH32V4X7

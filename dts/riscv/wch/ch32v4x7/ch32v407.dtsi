@@ -1,0 +1,7 @@
+/*
+ * Copyright (c) 2026 Adafruit Industries
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <wch/ch32v4x7/ch32v4x7.dtsi>

@@ -1,0 +1,14 @@
+# Copyright (c) 2026 Adafruit Industries
+# SPDX-License-Identifier: Apache-2.0
+
+# CH32V407 and CH32V467: QingKe V3V core (RV32IMAC plus Zve64x vector),
+# up to 200 MHz, USB high speed, Ethernet and LTDC. The peripheral layout
+# follows the CH32V30x, but the clock tree and core differ.
+config SOC_SERIES_CH32V4X7
+	bool
+	select SOC_FAMILY_CH32V
+
+config SOC_SERIES
+	default "ch32v4x7" if SOC_SERIES_CH32V4X7
+
+rsource "Kconfig.soc.*"

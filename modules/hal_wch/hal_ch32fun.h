@@ -60,6 +60,17 @@
 #include <ch32fun.h>
 #endif /* defined(CONFIG_SOC_SERIES_QINGKE_V4F) */
 
+#if defined(CONFIG_SOC_SERIES_CH32V4X7)
+/*
+ * ch32fun has no CH32V4x7 header yet. The GPIO, AFIO, USART, PFIC, SysTick and
+ * RCC enable registers match the CH32V30x; the clock driver defines the
+ * CH32V4x7-only fields itself.
+ */
+#define CH32V30x     1
+#define CH32V30x_D8C 1
+#include <ch32fun.h>
+#endif /* defined(CONFIG_SOC_SERIES_CH32V4X7) */
+
 #if defined(CONFIG_SOC_SERIES_CH32H41X)
 #define CH32H41x 1
 #include <ch32fun.h>

@@ -1,0 +1,9 @@
+# Copyright (c) 2026 Adafruit Industries
+# SPDX-License-Identifier: Apache-2.0
+
+config SOC_CH32V407
+	bool
+	select SOC_SERIES_CH32V4X7
+
+config SOC
+	default "ch32v407" if SOC_CH32V407
