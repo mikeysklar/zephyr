@@ -164,3 +164,9 @@
 		};
 	};
 };
+
+/* USB-C. Full speed until high speed has been tested. */
+zephyr_udc0: &usbhs1 {
+	maximum-speed = "full-speed";
+	status = "okay";
+};
