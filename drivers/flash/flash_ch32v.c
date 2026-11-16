@@ -33,6 +33,9 @@
 #define FLASH_STATR_WRBSY BIT(1)
 #endif
 
+/* Standard page erase covers 4 KiB, fast page erase covers smaller pages. */
+#define FLASH_CH32V_STD_ERASE_SHIFT 12
+
 struct flash_ch32v_config {
 	FLASH_TypeDef *regs;
 	uint8_t *base_addr;
@@ -180,6 +183,9 @@ static int flash_ch32v_erase(const struct device *dev, off_t offset, size_t size
 	const struct flash_ch32v_config *config = dev->config;
 	FLASH_TypeDef *regs = config->regs;
 	uint32_t erase_block_size = 1U << config->erase_block_shift;
+	uint32_t erase_mode = config->erase_block_shift == FLASH_CH32V_STD_ERASE_SHIFT
+				      ? FLASH_CTLR_PER
+				      : FLASH_CTLR_PAGE_FTER;
 	int rc;
 
 	if (size == 0) {
@@ -202,22 +208,20 @@ static int flash_ch32v_erase(const struct device *dev, off_t offset, size_t size
 		goto out;
 	}
 
-	/* Enable fast erase mode */
-	regs->CTLR |= FLASH_CTLR_PAGE_FTER;
-
 	for (off_t addr = offset; addr < offset + size; addr += erase_block_size) {
+		regs->CTLR |= erase_mode;
 		regs->ADDR = (uint32_t)(config->base_addr + addr);
 		regs->CTLR |= FLASH_CTLR_STRT;
 
 		rc = flash_ch32v_wait_busy(regs);
-		regs->CTLR &= ~FLASH_CTLR_PER;
+		regs->CTLR &= ~erase_mode;
 		if (rc < 0) {
 			goto out;
 		}
 	}
 
 out:
-	regs->CTLR &= ~FLASH_CTLR_PAGE_FTER;
+	regs->CTLR &= ~erase_mode;
 	flash_ch32v_lock(regs);
 	return rc;
 }
