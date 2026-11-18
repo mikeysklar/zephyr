@@ -7,3 +7,6 @@ config SOC_SERIES_CH32V4X7
 	# into a thread that yielded cooperatively would resume it with ret and
 	# leave the interrupt active, blocking every interrupt of that level.
 	select RISCV_ALWAYS_SWITCH_THROUGH_ECALL if MULTITHREADING
+	# A switch from inside an exception would be a nested ecall, which
+	# locks the core up. k_thread_abort() leaves the exception first.
+	select ARCH_HAS_THREAD_ABORT if MULTITHREADING
