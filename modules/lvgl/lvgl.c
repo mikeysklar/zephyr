@@ -416,7 +416,19 @@ int lvgl_init(void)
 		}
 
 		lv_display_set_user_data(lv_displays[i], p_disp_data);
-		if (set_lvgl_rendering_cb(lv_displays[i]) != 0) {
+		err = set_lvgl_rendering_cb(lv_displays[i]);
+		if (err == -ENOTSUP &&
+		    (p_disp_data->cap.current_pixel_format == PIXEL_FORMAT_MONO01 ||
+		     p_disp_data->cap.current_pixel_format == PIXEL_FORMAT_MONO10)) {
+			/*
+			 * Keep LVGL running for the other displays and for an
+			 * application that recreates this one in a format it can
+			 * render. Without draw buffers LVGL never renders it.
+			 */
+			LOG_WRN("Display %d: monochrome not rendered.", i);
+			continue;
+		}
+		if (err != 0) {
 			LOG_ERR("Display %d not supported.", i);
 			return -ENOTSUP;
 		}
